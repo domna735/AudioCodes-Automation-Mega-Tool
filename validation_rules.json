@@ -1,0 +1,10 @@
+{
+  "required_keys": [
+    "voip/line/0/auth_name",
+    "voip/line/0/auth_password",
+    "voip/line/0/enabled"
+  ],
+  "forbidden_patterns": [
+    ";;"
+  ]
+}

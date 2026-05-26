@@ -1,1 +1,210 @@
-# AudioCodes-Automation-Mega-Tool
+# 📘 AudioCodes Automation Mega‑Tool  
+
+---
+
+# 📌 Overview
+
+This Mega‑Tool automates AudioCodes IP Phone provisioning.  
+It includes **three modes**:
+
+本工具提供三種 AudioCodes 自動化模式：
+
+1. **Full Flow（Scan → Download → Modify → Upload）**  
+2. **Generate MAC.cfg（Option 160 Provisioning）**  
+3. **Download‑Only（Scan → Download）**
+
+---
+
+# ✨ Features
+
+| Feature | 說明 |
+|--------|------|
+| Auto Network Scan | 自動掃描網段 |
+| Auto MAC Retrieval | 自動讀取 MAC |
+| Auto Config Download | 自動下載設定 |
+| Auto Config Modify | 自動修改設定 |
+| Auto Config Upload | 自動上載設定 |
+| Multi‑Threaded Scan | 多線程掃描 |
+| Multi‑Threaded MAC.cfg Generation | 多線程生成設定 |
+| Auto Backup | 自動備份 |
+| Option 160 Support | 支援 DHCP Provisioning |
+| Error Summary Report | 最後輸出失敗電話與原因 |
+| File Logging (`tool.log`) | 記錄每次處理結果與錯誤 |
+| Patch‑Based Config Modify | 支援 `patch.json` 規則化修改 |
+| HTTPS / TLS Handling | 可切換 HTTP/HTTPS 與憑證驗證 |
+| Multi‑Password Fallback | 支援 `passwords.csv` 與 fallback 密碼 |
+| Progress Bar (`tqdm`) | 顯示掃描/處理進度 |
+| Request Retry + Backoff | 暫時性錯誤自動重試 |
+| Config Diff Reports | 產生修改前後差異 `.diff` |
+| Config Validation | 上載前驗證格式與必要 key |
+| API Path Cache | 自動記錄各電話可用 API path |
+| Optional Reboot | 上載後可選擇送出 reboot |
+| CLI Automation | 支援 `--mode` 與批次參數 |
+
+---
+
+# 🧰 Requirements
+
+- Python 3.9+  
+- `requests` library  
+- `tqdm` library (optional, for progress bar)
+
+Install:
+
+```bash
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install requests tqdm
+```
+
+---
+
+# 📂 Project Structure
+
+```
+project/
+ ├─ audiocodes_tool.py
+ ├─ patch.json
+ ├─ passwords.csv
+ ├─ template.cfg
+ ├─ validation_rules.json
+ ├─ diff_reports/
+ ├─ backup_configs/
+ ├─ modified_configs/
+ ├─ generated_cfg/
+ └─ README.md
+```
+
+---
+
+# 🚀 Modes
+
+---
+
+## 🔵 Mode 1 — Full Flow  
+### *(Scan → Download → Modify → Upload)*
+
+Used for:
+
+- Bulk updates  
+- On‑site maintenance  
+- Direct config modification  
+
+---
+
+## 🟢 Mode 2 — Generate MAC.cfg  
+### *(Option 160 Provisioning)*
+
+Used for:
+
+- Initial deployment  
+- 100–500 phones  
+- DHCP Option 160  
+
+---
+
+## 🟡 Mode 3 — Download‑Only  
+### *(Scan → Download)*
+
+Used for:
+
+- Backup  
+- Audit  
+- Config inspection  
+
+---
+
+# 🛠 Usage
+
+Run:
+
+```bash
+python audiocodes_tool.py
+```
+
+Menu:
+
+```
+1. Full Flow
+2. Generate MAC.cfg
+3. Download‑Only
+```
+
+---
+
+# 🧩 Production Config Files
+
+`patch.json`
+
+- `replace`: 文字取代規則
+- `set`: key-value 強制寫入/覆蓋規則
+
+`passwords.csv`
+
+- 欄位：`ip,username,password`
+- `ip` 留空代表全域密碼
+- 有填 `ip` 代表指定電話優先使用
+
+`template.cfg`
+
+- Mode 2 (`Generate MAC.cfg`) 使用的模板
+- 支援 `{USER}`、`{PASSWORD}` placeholder
+
+`tool.log`
+
+- 每次執行自動生成
+- 包含 timestamp、成功/失敗、錯誤原因
+
+`validation_rules.json`
+
+- `required_keys`: required keys in generated config
+- `forbidden_patterns`: blocked patterns
+
+`diff_reports/`
+
+- per-phone config diff report (`<MAC>.diff`)
+
+---
+
+# ⚡ CLI Examples
+
+```bash
+python audiocodes_tool.py --mode full --prefix 172.16.11. --retry 3
+python audiocodes_tool.py --mode gen --prefix 172.16.11.
+python audiocodes_tool.py --mode download --https --verify-tls
+python audiocodes_tool.py --mode full --reboot --no-progress
+```
+
+---
+
+# 🌐 Option 160 Integration
+
+DHCP:
+
+```
+Option 160 = http://<server>/provisioning/
+```
+
+Place generated files:
+
+```
+/provisioning/<MAC>.cfg
+```
+
+Phone reboot → auto download.
+
+---
+
+# ⚠️ Notes
+
+- HTTP access required  
+- HTTPS requires certificate handling  
+- Test with 1–2 phones first  
+- Multi‑threaded mode recommended off‑peak  
+
+---
+
+# 🏁 Conclusion
+
+This Mega‑Tool provides a complete automation solution for AudioCodes IP Phones,  
+reducing manual workload and deployment time.

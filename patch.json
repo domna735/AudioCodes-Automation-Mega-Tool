@@ -1,0 +1,11 @@
+{
+  "replace": [
+    {
+      "from": "voip/line/0/auth_password=1234",
+      "to": "voip/line/0/auth_password=9999"
+    }
+  ],
+  "set": {
+    "voip/line/0/enabled": "1"
+  }
+}
