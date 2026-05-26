@@ -1,0 +1,6 @@
+{
+  "set": {
+    "voip/sip/outbound_proxy/enabled": "0",
+    "voip/sip/redundant_outbound_proxy/mode": "SIMULTANEOUS"
+  }
+}

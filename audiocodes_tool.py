@@ -865,6 +865,95 @@ def run_generate_mac_cfg():
     print(f"失敗：{fail}")
 
 
+def run_acsa_fix():
+    """Apply predefined ACSA fixes (Case 5, Case 43) to all discovered phones."""
+    ensure_dir(BACKUP_DIR)
+    ensure_dir(MODIFIED_DIR)
+    ensure_dir(DIFF_DIR)
+
+    # load patches
+    patches = []
+    candidates = ["acsa_case_5_patch.json", "acsa_case_43_patch.json"]
+    for p in candidates:
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as pf:
+                    data = json.load(pf)
+                    patches.append(data)
+            except Exception as exc:
+                LOGGER.error("讀取 ACSA patch %s 失敗: %s", p, exc)
+
+    if not patches:
+        print("[ERROR] 未找到任何 ACSA patch 檔案")
+        return
+
+    phones = discover_phones(multithread=True)
+    success = 0
+    fail = 0
+
+    for ip in progress_iter(phones, total=len(phones), desc="ACSA Fix"):
+        print(f"\n===== ACSA Fix {ip} =====")
+        mac = get_mac_address(ip)
+        if not mac:
+            record_error(ip, "acsa-get-mac", "無法讀取 MAC")
+            fail += 1
+            continue
+
+        raw_cfg = download_config(ip)
+        if not raw_cfg:
+            record_error(ip, "acsa-download", "無法下載設定")
+            fail += 1
+            continue
+
+        text = raw_cfg.decode("utf-8", errors="ignore")
+
+        for patch in patches:
+            # apply replace then set
+            text = apply_patch_rules(text, patch if isinstance(patch, dict) else {})
+
+        modified_bytes = text.encode("utf-8")
+
+        # validate
+        valid, errors_list = validate_config_text(text)
+        if not valid:
+            record_error(ip, "acsa-validate", "; ".join(errors_list[:5]))
+            fail += 1
+            continue
+
+        # write modified and diff
+        modified_path = os.path.join(MODIFIED_DIR, f"{mac}.cfg")
+        try:
+            with open(modified_path, "wb") as mf:
+                mf.write(modified_bytes)
+        except Exception as exc:
+            record_error(ip, "acsa-write", f"寫入失敗: {exc}")
+            fail += 1
+            continue
+
+        try:
+            diff_path = write_diff_report(mac, raw_cfg.decode("utf-8", errors="ignore"), text)
+            LOGGER.info("ACSA diff for %s -> %s", ip, diff_path)
+        except Exception:
+            pass
+
+        # upload
+        if DRY_RUN:
+            print(f"[DRY-RUN] {ip} → ACSA patch 已套用但跳過上載")
+            success += 1
+            continue
+
+        if upload_config(ip, modified_path):
+            print(f"[OK] {ip} → ACSA patch 上載成功")
+            success += 1
+        else:
+            print(f"[FAIL] {ip} → ACSA patch 上載失敗")
+            fail += 1
+
+    print("\n===== ACSA Fix 結果 =====")
+    print(f"成功：{success}")
+    print(f"失敗：{fail}")
+
+
 def parse_args():
     parser = ArgumentParser(description="AudioCodes Automation Mega-Tool")
     parser.add_argument("--mode", choices=["full", "dry", "gen", "download", "menu"], default="menu")

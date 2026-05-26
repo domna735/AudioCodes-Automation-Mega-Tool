@@ -1,0 +1,9 @@
+{
+  "set": {
+    "voip/codec/codec_info/0/name": "PCMU",
+    "voip/codec/codec_info/1/name": "PCMA",
+    "voip/codec/codec_info/2/name": "",
+    "voip/codec/codec_info/3/name": "",
+    "voip/codec/codec_info/4/name": ""
+  }
+}
