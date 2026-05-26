@@ -44,6 +44,7 @@ RETRY_ATTEMPTS = 3
 RETRY_BACKOFF_BASE = 0.6
 RETRY_BACKOFF_MAX = 3.0
 REBOOT_AFTER_UPLOAD = False
+DRY_RUN = False
 
 BACKUP_DIR = "backup_configs"
 MODIFIED_DIR = "modified_configs"
@@ -737,6 +738,12 @@ def run_full_flow():
         except Exception as exc:
             record_error(ip, "diff-write", f"寫入差異檔失敗: {exc}")
 
+        if DRY_RUN:
+            print(f"[DRY-RUN] {ip} → 驗證完成，已跳過上載")
+            LOGGER.info("%s dry-run 完成，已跳過上載", ip)
+            success += 1
+            continue
+
         if upload_config(ip, modified_path):
             print(f"[OK] {ip} → 上載成功")
             LOGGER.info("%s 上載成功", ip)
@@ -860,7 +867,7 @@ def run_generate_mac_cfg():
 
 def parse_args():
     parser = ArgumentParser(description="AudioCodes Automation Mega-Tool")
-    parser.add_argument("--mode", choices=["full", "gen", "download", "menu"], default="menu")
+    parser.add_argument("--mode", choices=["full", "dry", "gen", "download", "menu"], default="menu")
     parser.add_argument("--prefix", help="Network prefix, e.g. 172.16.11.")
     parser.add_argument("--scan-workers", type=int, help="Thread workers for scan")
     parser.add_argument("--process-workers", type=int, help="Thread workers for processing")
@@ -870,6 +877,7 @@ def parse_args():
     parser.add_argument("--ca-cert", help="Custom CA certificate file path")
     parser.add_argument("--retry", type=int, help="Retry attempts for network requests")
     parser.add_argument("--reboot", action="store_true", help="Reboot phone after successful upload")
+    parser.add_argument("--dry-run", action="store_true", help="Run scan/download/modify/diff/validate only")
     parser.add_argument("--no-progress", action="store_true", help="Disable progress bars")
     return parser.parse_args()
 
@@ -880,7 +888,7 @@ def apply_args(args):
     global USE_HTTPS, TRY_ALTERNATE_SCHEME
     global VERIFY_TLS, CA_CERT_PATH
     global RETRY_ATTEMPTS, REBOOT_AFTER_UPLOAD
-    global ENABLE_PROGRESS
+    global ENABLE_PROGRESS, DRY_RUN
 
     if args.prefix:
         NETWORK_PREFIX = args.prefix
@@ -901,6 +909,8 @@ def apply_args(args):
         RETRY_ATTEMPTS = max(1, args.retry)
     if args.reboot:
         REBOOT_AFTER_UPLOAD = True
+    if args.dry_run:
+        DRY_RUN = True
     if args.no_progress:
         ENABLE_PROGRESS = False
 
@@ -909,7 +919,7 @@ def apply_args(args):
 # 主選單
 # -------------------------------
 def main():
-    global IP_CREDENTIALS, GLOBAL_CREDENTIALS
+    global IP_CREDENTIALS, GLOBAL_CREDENTIALS, DRY_RUN
 
     args = parse_args()
     apply_args(args)
@@ -920,6 +930,10 @@ def main():
     LOGGER.info("工具啟動，HTTPS=%s, TLS_VERIFY=%s", USE_HTTPS, VERIFY_TLS)
 
     if args.mode == "full":
+        run_full_flow()
+        return
+    if args.mode == "dry":
+        DRY_RUN = True
         run_full_flow()
         return
     if args.mode == "gen":
@@ -934,8 +948,9 @@ def main():
  AudioCodes Automation Mega‑Tool
 =========================================
 1. Full Flow（掃描 → 下載 → 修改 → 上載）
-2. Generate MAC.cfg（Option 160）
-3. Download‑Only（掃描 → 下載）
+2. Dry Run（掃描 → 下載 → 修改 → Diff → 驗證）
+3. Generate MAC.cfg（Option 160）
+4. Download‑Only（掃描 → 下載）
 =========================================
 """)
 
@@ -944,8 +959,11 @@ def main():
     if choice == "1":
         run_full_flow()
     elif choice == "2":
-        run_generate_mac_cfg()
+        DRY_RUN = True
+        run_full_flow()
     elif choice == "3":
+        run_generate_mac_cfg()
+    elif choice == "4":
         run_download_only()
     else:
         print("無效選項")

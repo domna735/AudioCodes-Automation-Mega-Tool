@@ -4,8 +4,9 @@
 支援三種模式：
 
 1. **Full Flow（掃描 → 下載 → 修改 → 上載）**  
-2. **Generate MAC.cfg（Option 160 自動部署）**  
-3. **Download‑Only（掃描 → 下載）**
+2. **Dry Run（掃描 → 下載 → 修改 → Diff → 驗證）**  
+3. **Generate MAC.cfg（Option 160 自動部署）**  
+4. **Download‑Only（掃描 → 下載）**
 
 適合大量電話（100–500 部）批量維護、初次部署或設定備份。
 
@@ -16,6 +17,7 @@
 | 模式 | 功能 | 用途 |
 |------|------|------|
 | **Full Flow** | 掃描 → 下載 → 修改 → 上載 | 現場大量更新設定 |
+| **Dry Run** | 掃描 → 下載 → 修改 → Diff → 驗證 | 上線前演練 / 驗證修改 |
 | **Generate MAC.cfg** | 多線程生成 `<MAC>.cfg` | Option 160 自動部署 |
 | **Download‑Only** | 掃描 → 下載 | 備份設定 / Audit |
 
@@ -143,6 +145,18 @@ REBOOT_AFTER_UPLOAD = False
 
 ```bash
 python audiocodes_tool.py --mode full --prefix 172.16.11. --retry 3
+python audiocodes_tool.py --mode dry --prefix 172.16.11. --retry 3
+python audiocodes_tool.py --mode gen --prefix 172.16.11.
+python audiocodes_tool.py --mode download --https --verify-tls
+python audiocodes_tool.py --mode full --reboot --no-progress
+```
+
+---
+
+# 🤖 CLI 自動化範例
+
+```bash
+python audiocodes_tool.py --mode full --prefix 172.16.11. --retry 3
 python audiocodes_tool.py --mode gen --prefix 172.16.11.
 python audiocodes_tool.py --mode download --https --verify-tls
 python audiocodes_tool.py --mode full --reboot --no-progress
@@ -220,8 +234,9 @@ python audiocodes_tool.py
 
 ```
 1. Full Flow（掃描 → 下載 → 修改 → 上載）
-2. Generate MAC.cfg（Option 160）
-3. Download‑Only（掃描 → 下載）
+2. Dry Run（掃描 → 下載 → 修改 → Diff → 驗證）
+3. Generate MAC.cfg（Option 160）
+4. Download‑Only（掃描 → 下載）
 ```
 
 ---

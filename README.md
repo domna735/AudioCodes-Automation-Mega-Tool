@@ -10,8 +10,9 @@ It includes **three modes**:
 本工具提供三種 AudioCodes 自動化模式：
 
 1. **Full Flow（Scan → Download → Modify → Upload）**  
-2. **Generate MAC.cfg（Option 160 Provisioning）**  
-3. **Download‑Only（Scan → Download）**
+2. **Dry Run（Scan → Download → Modify → Diff → Validate）**  
+3. **Generate MAC.cfg（Option 160 Provisioning）**  
+4. **Download‑Only（Scan → Download）**
 
 ---
 
@@ -28,6 +29,7 @@ It includes **three modes**:
 | Multi‑Threaded MAC.cfg Generation | 多線程生成設定 |
 | Auto Backup | 自動備份 |
 | Option 160 Support | 支援 DHCP Provisioning |
+| Dry Run Mode | 上線前演練，不上載 |
 | Error Summary Report | 最後輸出失敗電話與原因 |
 | File Logging (`tool.log`) | 記錄每次處理結果與錯誤 |
 | Patch‑Based Config Modify | 支援 `patch.json` 規則化修改 |
@@ -114,6 +116,17 @@ Used for:
 
 ---
 
+## 🟣 Mode 4 — Dry Run  
+### *(Scan → Download → Modify → Diff → Validate)*
+
+Used for:
+
+- Pre-deployment rehearsal  
+- Rule validation  
+- Audit without upload  
+
+---
+
 # 🛠 Usage
 
 Run:
@@ -126,8 +139,9 @@ Menu:
 
 ```
 1. Full Flow
-2. Generate MAC.cfg
-3. Download‑Only
+2. Dry Run
+3. Generate MAC.cfg
+4. Download‑Only
 ```
 
 ---
@@ -170,6 +184,7 @@ Menu:
 
 ```bash
 python audiocodes_tool.py --mode full --prefix 172.16.11. --retry 3
+python audiocodes_tool.py --mode dry --prefix 172.16.11. --retry 3
 python audiocodes_tool.py --mode gen --prefix 172.16.11.
 python audiocodes_tool.py --mode download --https --verify-tls
 python audiocodes_tool.py --mode full --reboot --no-progress
