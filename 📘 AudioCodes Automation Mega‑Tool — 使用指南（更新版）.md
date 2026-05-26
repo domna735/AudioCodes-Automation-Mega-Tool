@@ -185,6 +185,25 @@ C:\inetpub\wwwroot\provisioning\
 
 ---
 
+# 🔧 ACSA Fix Pack（Jira Case 5 & 43）
+
+若需套用 ACSA 專案的兩項 Jira 修補，工具提供專用模式：
+
+- 放置檔案：`acsa_case_5_patch.json`（codec ordering）、`acsa_case_43_patch.json`（SIP outbound proxy）
+- 先以 Dry Run 測試差異（不會上載）：
+
+```powershell
+python audiocodes_tool.py --mode acsa_fix --dry-run
+```
+
+- 若 Dry Run 檢查通過，執行上載：
+
+```powershell
+python audiocodes_tool.py --mode acsa_fix
+```
+
+差異會寫入 `diff_reports/`，處理紀錄在 `tool.log`。
+
 # 🎉 而家擁有嘅能力
 
 ### ✔ 自動掃描電話  

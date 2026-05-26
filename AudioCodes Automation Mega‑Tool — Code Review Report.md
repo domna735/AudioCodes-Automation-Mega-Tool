@@ -219,6 +219,16 @@ This allows:
 | HTTPS cert mismatch | Connection fail | CA cert support |
 | Wrong credentials | Lockout | Multi‑password fallback |
 
+---
+
+## **9. ACSA Fix Pack (New feature)**
+
+- Added `acsa_fix` CLI mode to apply two Jira fixes automatically using JSON patch files: `acsa_case_5_patch.json` and `acsa_case_43_patch.json`.
+- Workflow supported: Dry Run (`--dry-run`) to generate diffs and validate before any upload, then live apply without `--dry-run` to upload and (optionally) reboot.
+- Outputs: per‑device diffs in `diff_reports/` and logs in `tool.log`.
+
+**Recommendation:** Use Dry Run first on a representative subnet, review diffs, then run live on the target batches.
+
 **Verdict:**  
 > **All major risks already mitigated.**
 

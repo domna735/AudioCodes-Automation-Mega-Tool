@@ -23,6 +23,28 @@
 
 ---
 
+## ACSA Fix Pack（Jira Case 5 / Case 43）
+
+- 目的：針對 Jira 上的兩個常見問題自動套用修補：
+	- Case 5：強制 codec 順序（PCMU, PCMA，清空其餘）
+	- Case 43：調整 SIP Outbound Proxy 設定
+- 放置檔案：`acsa_case_5_patch.json`、`acsa_case_43_patch.json`（專案根目錄）
+- 執行（先用 Dry Run 檢查差異，不上載）：
+
+```bash
+python audiocodes_tool.py --mode acsa_fix --dry-run
+```
+
+- 若 Dry Run 檢查通過，移除 `--dry-run` 即可上載：
+
+```bash
+python audiocodes_tool.py --mode acsa_fix
+```
+
+變更會產生差異檔於 `diff_reports/`，並在 `tool.log` 記錄處理結果。
+
+---
+
 # 🧰 系統需求
 
 - Windows / Linux  

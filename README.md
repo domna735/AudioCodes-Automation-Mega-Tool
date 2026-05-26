@@ -135,6 +135,24 @@ Run:
 python audiocodes_tool.py
 ```
 
+## 🔧 ACSA Fix Pack (Case 5 & Case 43)
+
+ - Purpose: Apply Jira‑reported fixes (codec ordering and SIP outbound proxy) to phones via patch files.
+ - Patch files: `acsa_case_5_patch.json`, `acsa_case_43_patch.json` (in repository root).
+ - Dry run (no upload):
+
+```bash
+python audiocodes_tool.py --mode acsa_fix --dry-run
+```
+
+- Apply changes (will upload to phones):
+
+```bash
+python audiocodes_tool.py --mode acsa_fix
+```
+
+The tool will generate diffs in `diff_reports/` and log results to `tool.log`.
+
 Menu:
 
 ```

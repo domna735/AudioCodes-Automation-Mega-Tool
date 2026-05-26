@@ -956,7 +956,7 @@ def run_acsa_fix():
 
 def parse_args():
     parser = ArgumentParser(description="AudioCodes Automation Mega-Tool")
-    parser.add_argument("--mode", choices=["full", "dry", "gen", "download", "menu"], default="menu")
+    parser.add_argument("--mode", choices=["full", "dry", "gen", "download", "acsa_fix", "menu"], default="menu")
     parser.add_argument("--prefix", help="Network prefix, e.g. 172.16.11.")
     parser.add_argument("--scan-workers", type=int, help="Thread workers for scan")
     parser.add_argument("--process-workers", type=int, help="Thread workers for processing")
@@ -1030,6 +1030,11 @@ def main():
         return
     if args.mode == "download":
         run_download_only()
+        return
+    if args.mode == "acsa_fix":
+        if args.dry_run:
+            DRY_RUN = True
+        run_acsa_fix()
         return
 
     print("""
