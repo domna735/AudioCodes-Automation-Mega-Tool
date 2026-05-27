@@ -1,61 +1,141 @@
 from flask import Flask, request, Response
 import base64
 import time
+import os
+import json
+import argparse
 
 app = Flask(__name__)
 
-FAKE_MAC = "00:11:22:33:44:55"
-FAKE_CONFIG = """voip/line/0/auth_name=user123
-voip/line/0/auth_password=pass123
-voip/codec/codec_info/0/name=PCMU
-voip/codec/codec_info/1/name=PCMA
-"""
-
 USERNAME = "admin"
 PASSWORD = "1234"
-ALLOWED_HOSTS = {"127.0.0.1", "localhost"}
+FAKE_MAC = "00:11:22:33:44:55"
 
+# ============================================================
+#  Case Loader
+# ============================================================
 
-def host_allowed(req):
-    host = (req.host or "").split(":", 1)[0].lower()
-    return True  # allow all hosts; behavior decided per-host below
+def load_case(case_arg=None):
+    """Load case JSON from file path or case ID."""
+    if not case_arg:
+        case_arg = os.environ.get("ACSA_CASE")
 
+    if not case_arg:
+        return None
 
-def get_behavior_for_host(host_ip):
-    """Return behavior string by host_ip to simulate devices.
+    # direct file path
+    if os.path.exists(case_arg) and case_arg.endswith(".json"):
+        with open(case_arg, "r", encoding="utf-8") as f:
+            return json.load(f)
 
-    behaviors:
-      127.0.0.1 -> normal
-      127.0.0.2 -> slow (1.5s)
-      127.0.0.3 -> server error (500)
-      127.0.0.4 -> service unavailable (503)
-      127.0.0.5 -> timeout (sleep > tool timeout)
-      others -> not found (404)
-    """
-    # determine by last octet to avoid prefix collisions like 127.0.0.104
-    try:
-        parts = host_ip.split('.')
-        last = int(parts[-1])
-    except Exception:
-        return "notfound"
+    # search common names
+    candidates = [
+        f"cases/case_{case_arg}.json",
+        f"cases/acsa_case_{case_arg}.json",
+        f"cases/acsa_case_{case_arg}_patch.json",
+        f"case_{case_arg}.json",
+        f"acsa_case_{case_arg}.json",
+    ]
 
-    if last == 1:
-        return "normal"
-    if last == 2:
-        return "slow"
-    if last == 3:
-        return "error"
-    if last == 4:
-        return "unavailable"
-    if last == 5:
-        return "timeout"
-    return "notfound"
+    for p in candidates:
+        if os.path.exists(p):
+            with open(p, "r", encoding="utf-8") as f:
+                return json.load(f)
 
-
-@app.before_request
-def block_loopback_aliases():
-    # allow request but we will decide behavior based on Host header
     return None
+
+
+# ============================================================
+#  Load Case at Startup
+# ============================================================
+
+CASE = None
+try:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--case")
+    ns, _ = parser.parse_known_args()
+    CASE = load_case(ns.case)
+except Exception:
+    CASE = load_case(os.environ.get("ACSA_CASE"))
+
+# Default config (fallback)
+DEFAULT_CONFIG = {
+    "voip/line/0/auth_name": "user123",
+    "voip/line/0/auth_password": "pass123",
+    "voip/codec/codec_info/0/name": "PCMU",
+    "voip/codec/codec_info/1/name": "PCMA",
+}
+
+# Case-driven config
+CONFIG_MAP = CASE.get("config", DEFAULT_CONFIG) if CASE else DEFAULT_CONFIG
+
+# Convert config dict → key=value text
+FAKE_CONFIG = "\n".join(f"{k}={v}" for k, v in CONFIG_MAP.items()) + "\n"
+
+# Global behavior
+GLOBAL_BEHAVIOR = CASE.get("behavior", {}) if CASE else {}
+
+# Per-host behavior map
+BEHAVIOR_MAP = CASE.get("behavior_map", {}) if CASE else {}
+
+
+# ============================================================
+#  Behavior Resolver
+# ============================================================
+
+def resolve_behavior(host_ip):
+    """Return behavior dict for this host."""
+    last = host_ip.split(".")[-1]
+
+    # 1) Per-host behavior_map
+    if last in BEHAVIOR_MAP:
+        return BEHAVIOR_MAP[last]
+
+    # 2) Global behavior
+    if GLOBAL_BEHAVIOR:
+        return GLOBAL_BEHAVIOR
+
+    # 3) Default behavior (legacy)
+    return {
+        "mode": "normal"
+    }
+
+
+def apply_behavior(behavior):
+    """Apply latency, timeout, or error based on behavior dict."""
+    # timeout
+    if behavior.get("timeout"):
+        time.sleep(999)
+        return Response("Timeout", status=504)
+
+    # latency
+    latency = behavior.get("latency_ms")
+    if latency:
+        time.sleep(latency / 1000)
+
+    # forced status code
+    status = behavior.get("status_code")
+    if status and status != 200:
+        return Response(f"Error {status}", status=status)
+
+    # mode override
+    mode = behavior.get("mode")
+    if mode == "slow":
+        time.sleep(1.5)
+    elif mode == "error":
+        return Response("Server Error", status=500)
+    elif mode == "unavailable":
+        return Response("Service Unavailable", status=503)
+    elif mode == "timeout":
+        time.sleep(999)
+        return Response("Timeout", status=504)
+
+    return None  # no override → continue normally
+
+
+# ============================================================
+#  Auth
+# ============================================================
 
 def check_auth(req):
     auth = req.headers.get("Authorization", "")
@@ -66,46 +146,43 @@ def check_auth(req):
     user, pw = decoded.split(":", 1)
     return user == USERNAME and pw == PASSWORD
 
+
 def require_auth():
-    return Response("Unauthorized", 401, {"WWW-Authenticate": 'Basic realm="Login Required"'})
+    return Response("Unauthorized", 401, {
+        "WWW-Authenticate": 'Basic realm="Login Required"'
+    })
+
+
+# ============================================================
+#  Routes
+# ============================================================
 
 @app.route("/AdminPage/")
 def admin_page():
-    host = (request.host or "").split(":", 1)[0]
-    beh = get_behavior_for_host(host)
-    if beh == "normal":
-        return Response("AudioCodes Fake Device", mimetype="text/plain")
-    if beh == "slow":
-        time.sleep(1.5)
-        return Response("AudioCodes Fake Device (slow)", mimetype="text/plain")
-    if beh == "error":
-        return Response("Server Error", status=500, mimetype="text/plain")
-    if beh == "unavailable":
-        return Response("Service Unavailable", status=503, mimetype="text/plain")
-    if beh == "timeout":
-        time.sleep(5)
-        return Response("No Response", mimetype="text/plain")
-    return Response("Not AudioCodes", 404, mimetype="text/plain")
+    host = request.host.split(":")[0]
+    behavior = resolve_behavior(host)
+
+    override = apply_behavior(behavior)
+    if override:
+        return override
+
+    return Response("AudioCodes Fake Device", mimetype="text/plain")
+
 
 @app.route("/AdminPage/get_mac_address.cgi")
 def get_mac():
-    host = (request.host or "").split(":", 1)[0]
-    beh = get_behavior_for_host(host)
     if not check_auth(request):
         return require_auth()
-    if beh == "normal":
-        return Response(FAKE_MAC, mimetype="text/plain")
-    if beh == "slow":
-        time.sleep(1.5)
-        return Response(FAKE_MAC, mimetype="text/plain")
-    if beh == "error":
-        return Response("", status=500)
-    if beh == "unavailable":
-        return Response("", status=503)
-    if beh == "timeout":
-        time.sleep(5)
-        return Response(FAKE_MAC, mimetype="text/plain")
-    return Response("Not Found", 404, mimetype="text/plain")
+
+    host = request.host.split(":")[0]
+    behavior = resolve_behavior(host)
+
+    override = apply_behavior(behavior)
+    if override:
+        return override
+
+    return Response(FAKE_MAC, mimetype="text/plain")
+
 
 @app.route("/AdminPage/get_device_info.cgi")
 def get_device_info():
@@ -113,24 +190,22 @@ def get_device_info():
         return require_auth()
     return Response(f"MAC={FAKE_MAC}", mimetype="text/plain")
 
+
 @app.route("/AdminPage/conf_export.cgi")
 @app.route("/AdminPage/export_cfg.cgi")
 def export_cfg():
-    host = (request.host or "").split(":", 1)[0]
-    beh = get_behavior_for_host(host)
     if not check_auth(request):
         return require_auth()
-    if beh in ("normal", "slow", "timeout"):
-        if beh == "slow":
-            time.sleep(1.5)
-        if beh == "timeout":
-            time.sleep(5)
-        return Response(FAKE_CONFIG, mimetype="text/plain")
-    if beh == "error":
-        return Response("", status=500)
-    if beh == "unavailable":
-        return Response("", status=503)
-    return Response("Not Found", 404, mimetype="text/plain")
+
+    host = request.host.split(":")[0]
+    behavior = resolve_behavior(host)
+
+    override = apply_behavior(behavior)
+    if override:
+        return override
+
+    return Response(FAKE_CONFIG, mimetype="text/plain")
+
 
 @app.route("/AdminPage/conf_import.cgi", methods=["POST"])
 @app.route("/AdminPage/import_cfg.cgi", methods=["POST"])
@@ -138,12 +213,15 @@ def export_cfg():
 def import_cfg():
     if not check_auth(request):
         return require_auth()
+
     file = request.files.get("file")
     if file:
         print("=== Received Config Upload ===")
         print(file.read().decode())
         print("==============================")
+
     return "OK", 200
+
 
 @app.route("/AdminPage/reboot.cgi", methods=["POST"])
 @app.route("/AdminPage/restart.cgi", methods=["POST"])
@@ -152,5 +230,12 @@ def reboot():
         return require_auth()
     return "Rebooting", 200
 
+
+# ============================================================
+#  Main
+# ============================================================
+
 if __name__ == "__main__":
+    print("Loaded Case:", CASE)
     app.run(host="0.0.0.0", port=5000)
+
