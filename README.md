@@ -271,6 +271,14 @@ python fake_ac_api.py --case cases/case_5.json
 	- `patches`: list of patch objects (each `replace` and/or `set`)
 	- `config`: optional mapping used by the fake server as exported config
 	- `behavior`: optional `{ "latency_ms": <ms>, "status_code": <int>, "mode": "normal|timeout|error" }`
+	- `behavior_map`: optional per-host overrides keyed by last octet or full host
+	- `endpoint_behavior`: optional per-route overrides keyed by endpoint path
+
+On Windows, quote any path that contains spaces:
+
+```
+python audiocodes_tool.py --mode acsa_fix --acsa-case "C:\project of auto conf download\cases\case_43.json" --dry-run
+```
 
 This lets you add new ACSA fixes by editing/adding JSON files — no code changes required.
 

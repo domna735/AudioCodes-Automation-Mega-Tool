@@ -23,5 +23,10 @@
     "3": { "mode": "error", "status_code": 500 },
     "4": { "mode": "unavailable", "status_code": 503 },
     "5": { "mode": "timeout", "timeout": true }
+  },
+  "endpoint_behavior": {
+    "/AdminPage/": { "mode": "normal" },
+    "/AdminPage/get_mac_address.cgi": { "latency_ms": 100 },
+    "/AdminPage/conf_export.cgi": { "status_code": 200 }
   }
 }

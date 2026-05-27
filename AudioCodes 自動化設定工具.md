@@ -29,6 +29,7 @@
 	- Case 5：強制 codec 順序（PCMU, PCMA，清空其餘）
 	- Case 43：調整 SIP Outbound Proxy 設定
 - 放置檔案：`acsa_case_5_patch.json`、`acsa_case_43_patch.json`（專案根目錄）
+- 亦可直接用 `cases/case_5.json`、`cases/case_43.json`，並支援 `behavior_map` / `endpoint_behavior` 做假機行為控制
 - 執行（先用 Dry Run 檢查差異，不上載）：
 
 ```bash
@@ -52,6 +53,18 @@ python fake_ac_api.py
 ```
 
 呢個 mock server 只接受 `127.0.0.1` / `localhost`，所以 `127.0.0.2`、`127.0.0.3` 之類嘅 loopback alias 會直接回 `404`，唔會再被誤認為真電話。
+
+如果要按 case 驅動 mock 行為，可以直接帶 case 檔：
+
+```powershell
+python fake_ac_api.py --case cases/case_5.json
+```
+
+Windows 路徑有空格時，`--acsa-case` 一定要加引號：
+
+```powershell
+python audiocodes_tool.py --mode acsa_fix --acsa-case "C:\project of auto conf download\cases\case_43.json" --dry-run
+```
 
 ---
 

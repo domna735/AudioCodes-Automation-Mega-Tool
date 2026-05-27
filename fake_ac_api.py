@@ -78,27 +78,38 @@ GLOBAL_BEHAVIOR = CASE.get("behavior", {}) if CASE else {}
 # Per-host behavior map
 BEHAVIOR_MAP = CASE.get("behavior_map", {}) if CASE else {}
 
+# Endpoint behavior map (global overrides by route)
+ENDPOINT_BEHAVIOR = CASE.get("endpoint_behavior", {}) if CASE else {}
+
 
 # ============================================================
 #  Behavior Resolver
 # ============================================================
 
-def resolve_behavior(host_ip):
-    """Return behavior dict for this host."""
+def resolve_behavior(host_ip, endpoint=None):
+    """Return behavior dict for this host and optional endpoint."""
     last = host_ip.split(".")[-1]
+    behavior = {}
 
     # 1) Per-host behavior_map
     if last in BEHAVIOR_MAP:
-        return BEHAVIOR_MAP[last]
+        behavior.update(BEHAVIOR_MAP[last])
 
     # 2) Global behavior
     if GLOBAL_BEHAVIOR:
-        return GLOBAL_BEHAVIOR
+        behavior.update(GLOBAL_BEHAVIOR)
 
-    # 3) Default behavior (legacy)
-    return {
-        "mode": "normal"
-    }
+    # 3) Endpoint behavior (route-specific)
+    if endpoint and endpoint in ENDPOINT_BEHAVIOR:
+        endpoint_behavior = ENDPOINT_BEHAVIOR[endpoint]
+        if isinstance(endpoint_behavior, dict):
+            behavior.update(endpoint_behavior)
+
+    # 4) Default behavior (legacy)
+    if not behavior:
+        behavior = {"mode": "normal"}
+
+    return behavior
 
 
 def apply_behavior(behavior):
@@ -160,7 +171,7 @@ def require_auth():
 @app.route("/AdminPage/")
 def admin_page():
     host = request.host.split(":")[0]
-    behavior = resolve_behavior(host)
+    behavior = resolve_behavior(host, "/AdminPage/")
 
     override = apply_behavior(behavior)
     if override:
@@ -175,7 +186,7 @@ def get_mac():
         return require_auth()
 
     host = request.host.split(":")[0]
-    behavior = resolve_behavior(host)
+    behavior = resolve_behavior(host, "/AdminPage/get_mac_address.cgi")
 
     override = apply_behavior(behavior)
     if override:
@@ -198,7 +209,7 @@ def export_cfg():
         return require_auth()
 
     host = request.host.split(":")[0]
-    behavior = resolve_behavior(host)
+    behavior = resolve_behavior(host, "/AdminPage/conf_export.cgi")
 
     override = apply_behavior(behavior)
     if override:

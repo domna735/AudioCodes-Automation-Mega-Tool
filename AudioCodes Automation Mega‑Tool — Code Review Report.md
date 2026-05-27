@@ -226,6 +226,8 @@ This allows:
 - Added `acsa_fix` CLI mode to apply two Jira fixes automatically using JSON patch files: `acsa_case_5_patch.json` and `acsa_case_43_patch.json`.
 - Workflow supported: Dry Run (`--dry-run`) to generate diffs and validate before any upload, then live apply without `--dry-run` to upload and (optionally) reboot.
 - Outputs: per‑device diffs in `diff_reports/` and logs in `tool.log`.
+- The fake server is case-driven and now supports `behavior_map` plus `endpoint_behavior`, so you can simulate route-specific latency or failures without code changes.
+- On Windows, quote any `--acsa-case` path that contains spaces.
 
 **Recommendation:** Use Dry Run first on a representative subnet, review diffs, then run live on the target batches.
 

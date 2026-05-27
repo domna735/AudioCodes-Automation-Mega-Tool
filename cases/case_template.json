@@ -1,6 +1,6 @@
 {
   "title": "ACSA Case template",
-  "description": "Template for ACSA case JSON files. Fields:\n - patches: array of patch objects (each has 'replace' list and/or 'set' dict)\n - config: optional mapping of config keys->values to be used by fake server export\n - behavior: optional default behavior hints for fake server (latency_ms, status_code, mode)\n - behavior_map: optional per-host behavior overrides keyed by last octet or full host\n",
+  "description": "Template for ACSA case JSON files. Fields:\n - patches: array of patch objects (each has 'replace' list and/or 'set' dict)\n - config: optional mapping of config keys->values to be used by fake server export\n - behavior: optional default behavior hints for fake server (latency_ms, status_code, mode)\n - behavior_map: optional per-host behavior overrides keyed by last octet or full host\n - endpoint_behavior: optional per-endpoint behavior overrides keyed by route path\n",
   "patches": [
     {
       "replace": [
@@ -28,5 +28,10 @@
     "3": { "mode": "error", "status_code": 500 },
     "4": { "mode": "unavailable", "status_code": 503 },
     "5": { "mode": "timeout", "timeout": true }
+  },
+  "endpoint_behavior": {
+    "/AdminPage/": { "mode": "slow", "latency_ms": 500 },
+    "/AdminPage/get_mac_address.cgi": { "status_code": 200 },
+    "/AdminPage/conf_export.cgi": { "latency_ms": 250 }
   }
 }
