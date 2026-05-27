@@ -229,6 +229,8 @@ This allows:
 - The fake server is case-driven and now supports `behavior_map` plus `endpoint_behavior`, so you can simulate route-specific latency or failures without code changes.
 - `random_error_rate` can be enabled to inject random `500` / `503` / `timeout` responses and validate retry resilience.
 - On Windows, quote any `--acsa-case` path that contains spaces.
+- Real branch cfg exports from `New branch MK real conf/` can now be converted into reusable baseline and patch cases with `branch_case_generator.py` and `branch_plan_mk.json`.
+- Case JSON files can now be rendered back into uploadable cfg files with the new `--mode reverse` workflow.
 
 **Recommendation:** Use Dry Run first on a representative subnet, review diffs, then run live on the target batches.
 

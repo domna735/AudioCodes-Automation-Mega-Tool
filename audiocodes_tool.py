@@ -31,6 +31,9 @@ TRY_ALTERNATE_SCHEME = True
 VERIFY_TLS = False
 CA_CERT_PATH = ""
 ACSA_CASE_ID = None
+REVERSE_CASE_FILE = None
+REVERSE_CASE_DIR = None
+REVERSE_OUTPUT_DIR = "generated_cfg/reversed_cfg"
 
 LOG_FILE = "tool.log"
 PATCH_FILE = "patch.json"
@@ -515,6 +518,109 @@ def apply_patch_rules(text, rules):
     return output
 
 
+def load_json_payload(path):
+    with open(path, "r", encoding="utf-8") as payload_file:
+        return json.load(payload_file)
+
+
+def render_cfg_from_case_payload(case_payload):
+    if not isinstance(case_payload, dict):
+        raise ValueError("case payload must be a JSON object")
+
+    config_data = case_payload.get("config", case_payload)
+    if not isinstance(config_data, dict):
+        raise ValueError("case payload config must be a JSON object")
+
+    config_map = {str(key): str(value) for key, value in config_data.items()}
+
+    text_lines = [f"{key}={value}" for key, value in config_map.items()]
+    rendered_text = "\n".join(text_lines)
+    if rendered_text and not rendered_text.endswith("\n"):
+        rendered_text += "\n"
+
+    for patch in case_payload.get("patches", []):
+        if not isinstance(patch, dict):
+            continue
+
+        replace_rules = patch.get("replace", [])
+        if isinstance(replace_rules, list):
+            for item in replace_rules:
+                if not isinstance(item, dict):
+                    continue
+                source = str(item.get("from", ""))
+                target = str(item.get("to", ""))
+                if source:
+                    rendered_text = rendered_text.replace(source, target)
+
+        set_rules = patch.get("set", {})
+        if isinstance(set_rules, dict):
+            rendered_text = apply_patch_rules(rendered_text, {"replace": [], "set": {str(key): str(value) for key, value in set_rules.items()}})
+
+    valid, errors = validate_config_text(rendered_text)
+    if not valid:
+        raise ValueError("; ".join(errors[:5]))
+
+    return rendered_text
+
+
+def write_cfg_from_case_file(case_path, output_dir):
+    case_payload = load_json_payload(case_path)
+    rendered_text = render_cfg_from_case_payload(case_payload)
+
+    base_name = os.path.splitext(os.path.basename(case_path))[0]
+    if base_name.endswith("_patch"):
+        base_name = base_name[:-6]
+
+    ensure_dir(output_dir)
+    output_path = os.path.join(output_dir, f"{base_name}.cfg")
+    with open(output_path, "w", encoding="utf-8") as cfg_file:
+        cfg_file.write(rendered_text)
+
+    return output_path
+
+
+def run_reverse_generate_cfg(case_file=None, case_dir=None, output_dir=REVERSE_OUTPUT_DIR):
+    ensure_dir(output_dir)
+
+    case_paths = []
+    if case_file:
+        case_paths.append(case_file)
+    if case_dir:
+        for name in sorted(os.listdir(case_dir)):
+            if name.lower().endswith(".json"):
+                case_paths.append(os.path.join(case_dir, name))
+
+    seen = set()
+    unique_paths = []
+    for path in case_paths:
+        normalized = os.path.normpath(path)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        unique_paths.append(path)
+
+    if not unique_paths:
+        print("[ERROR] 未提供任何 case JSON 檔案")
+        return
+
+    success = 0
+    fail = 0
+    for case_path in unique_paths:
+        try:
+            output_path = write_cfg_from_case_file(case_path, output_dir)
+            print(f"[OK] {case_path} → {output_path}")
+            LOGGER.info("Reverse generated cfg: %s -> %s", case_path, output_path)
+            success += 1
+        except Exception as exc:
+            record_error(case_path, "reverse-generate", f"JSON → cfg 失敗: {exc}")
+            print(f"[FAIL] {case_path} → 轉換失敗: {exc}")
+            fail += 1
+
+    print("\n===== Reverse 生成結果 =====")
+    print(f"成功：{success}")
+    print(f"失敗：{fail}")
+
+
 def get_template_text():
     if os.path.exists(TEMPLATE_FILE):
         try:
@@ -971,7 +1077,7 @@ def process_single_device(ip, args):
 
     if args.dry_run:
         LOGGER.info(f"[{ip}] Dry Run 模式，不上載設定")
-        save_diff(mac, cfg, modified_cfg)
+        write_diff_report(mac, cfg.decode("utf-8", errors="ignore"), modified_cfg.decode("utf-8", errors="ignore"))
         return
 
     upload_ok = upload_config(ip, modified_cfg)
@@ -982,7 +1088,7 @@ def process_single_device(ip, args):
     LOGGER.info(f"[{ip}] 上載成功")
 
     if args.reboot:
-        reboot_device(ip)
+        reboot_phone(ip)
         LOGGER.info(f"[{ip}] 已送出 reboot 指令")
 
 
@@ -1113,8 +1219,11 @@ def run_acsa_fix():
 
 def parse_args():
     parser = ArgumentParser(description="AudioCodes Automation Mega-Tool")
-    parser.add_argument("--mode", choices=["full", "dry", "gen", "download", "acsa_fix", "menu"], default="menu")
+    parser.add_argument("--mode", choices=["full", "dry", "gen", "download", "acsa_fix", "reverse", "menu"], default="menu")
     parser.add_argument("--acsa-case", help="ACSA case id to apply (e.g. 5 or 43)")
+    parser.add_argument("--case-file", help="Single case JSON to convert back into cfg")
+    parser.add_argument("--case-dir", help="Directory of case JSON files to convert back into cfg")
+    parser.add_argument("--output-dir", help="Output directory for generated cfg files")
     parser.add_argument("--prefix", help="Network prefix, e.g. 172.16.11.")
     parser.add_argument("--scan-workers", type=int, help="Thread workers for scan")
     parser.add_argument("--process-workers", type=int, help="Thread workers for processing")
@@ -1138,6 +1247,7 @@ def apply_args(args):
     global RETRY_ATTEMPTS, REBOOT_AFTER_UPLOAD
     global ENABLE_PROGRESS, DRY_RUN
     global LOGGER
+    global REVERSE_CASE_FILE, REVERSE_CASE_DIR, REVERSE_OUTPUT_DIR
 
     if args.prefix:
         NETWORK_PREFIX = args.prefix
@@ -1177,6 +1287,13 @@ def apply_args(args):
         except Exception:
             LOGGER.error("無法設定 ACSA case: %s", args.acsa_case)
 
+    if args.case_file:
+        REVERSE_CASE_FILE = args.case_file
+    if args.case_dir:
+        REVERSE_CASE_DIR = args.case_dir
+    if args.output_dir:
+        REVERSE_OUTPUT_DIR = args.output_dir
+
 
 # -------------------------------
 # 主選單
@@ -1204,6 +1321,10 @@ def main():
         return
     if args.mode == "download":
         run_download_only()
+        return
+    if args.mode == "reverse":
+        case_file = args.case_file or (args.acsa_case if args.acsa_case and os.path.exists(args.acsa_case) else None)
+        run_reverse_generate_cfg(case_file=case_file, case_dir=args.case_dir, output_dir=REVERSE_OUTPUT_DIR)
         return
     if args.mode == "acsa_fix":
         if args.dry_run:

@@ -283,3 +283,37 @@ python audiocodes_tool.py --mode acsa_fix --acsa-case "C:\project of auto conf d
 
 This lets you add new ACSA fixes by editing/adding JSON files — no code changes required.
 
+## 🏢 Real Branch Case Generation
+
+The real branch exports under `New branch MK real conf/` can be converted into reusable baseline and patch cases with the helper script:
+
+```powershell
+python branch_case_generator.py --plan branch_plan_mk.json --output-dir cases/branch_mk
+```
+
+The starter plan in `branch_plan_mk.json` covers the five Mong Kok L phones and maps the observed real cfg fields to the generated case payload:
+
+- `voip/line/0/description` for the extension number
+- `voip/line/0/extension_display` for the display number
+- `network/lan/location/location_uri` for the branch location value
+- `network/lan/vlan/priority` for the branch priority value
+- `system/display/message_on_screen` for the branch main line
+
+If your branch uses different target keys, edit only the plan JSON; the generator does not need to change.
+
+## 🔁 Reverse Generator
+
+Case JSON files can now be rendered back into uploadable `.cfg` files:
+
+```powershell
+python audiocodes_tool.py --mode reverse --case-file cases/branch_mk/case_000171906FD45_patch.json --output-dir generated_cfg/reversed
+```
+
+You can also batch-convert a directory of cases:
+
+```powershell
+python audiocodes_tool.py --mode reverse --case-dir cases/branch_mk --output-dir generated_cfg/reversed
+```
+
+This reads the `config` block, applies any `patches`, validates the final text, and writes a plain key=value cfg that can be uploaded with the device import endpoint.
+

@@ -204,6 +204,44 @@ python audiocodes_tool.py --mode acsa_fix
 
 差異會寫入 `diff_reports/`，處理紀錄在 `tool.log`。
 
+---
+
+## 實際分行 cfg 轉 case
+
+如果你要把 `New branch MK real conf/` 內的真實分行設定檔轉成可重用 case，請用：
+
+```powershell
+python branch_case_generator.py --plan branch_plan_mk.json --output-dir cases/branch_mk
+```
+
+這個流程會輸出 baseline 與 patch 兩種 JSON，方便你後續直接接到 `--acsa-case` 或 fake server 測試。預設對應欄位如下：
+
+- `voip/line/0/description`：分機號
+- `voip/line/0/extension_display`：顯示號碼
+- `network/lan/location/location_uri`：分行位置 / IPCC location
+- `network/lan/vlan/priority`：priority
+- `system/display/message_on_screen`：branch main line
+
+若實際現場 key 名稱不同，改 `branch_plan_mk.json` 即可。
+
+---
+
+## Reverse Generator（JSON → cfg）
+
+如果 case JSON 已有 `config` / `patches`，可以用下面方式轉成可上載的 `.cfg`：
+
+```powershell
+python audiocodes_tool.py --mode reverse --case-file cases/branch_mk/case_000171906FD45_patch.json --output-dir generated_cfg/reversed
+```
+
+或者批量處理整個資料夾：
+
+```powershell
+python audiocodes_tool.py --mode reverse --case-dir cases/branch_mk --output-dir generated_cfg/reversed
+```
+
+這個 reverse 流程會先讀 `config`，再套用 `patches`，最後輸出成純 `key=value` 格式，方便直接用 device import endpoint 上載。
+
 # 🎉 而家擁有嘅能力
 
 ### ✔ 自動掃描電話  

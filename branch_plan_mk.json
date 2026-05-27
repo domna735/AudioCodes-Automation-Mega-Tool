@@ -1,0 +1,51 @@
+{
+  "title": "Mong Kok L branch real cfg plan",
+  "description": "Real cfg exports for the five Mong Kok L branch phones.",
+  "entries": [
+    {
+      "cfg_file": "000171906FD45.cfg",
+      "extension": "4350",
+      "display_no": "4350",
+      "priority": 1,
+      "ipcc_location": "Mong Kok L",
+      "main_line": "36284353",
+      "title": "Mong Kok L branch 4350"
+    },
+    {
+      "cfg_file": "000171906FCAB.cfg",
+      "extension": "4351",
+      "display_no": "4351",
+      "priority": 2,
+      "ipcc_location": "Mong Kok L",
+      "main_line": "36284353",
+      "title": "Mong Kok L branch 4351"
+    },
+    {
+      "cfg_file": "000171907677D.cfg",
+      "extension": "4352",
+      "display_no": "4352",
+      "priority": 3,
+      "ipcc_location": "Mong Kok L",
+      "main_line": "36284353",
+      "title": "Mong Kok L branch 4352"
+    },
+    {
+      "cfg_file": "0001719076445.cfg",
+      "extension": "4353",
+      "display_no": "4353",
+      "priority": 4,
+      "ipcc_location": "Mong Kok L",
+      "main_line": "36284353",
+      "title": "Mong Kok L branch 4353"
+    },
+    {
+      "cfg_file": "000171907630E.cfg",
+      "extension": "4354",
+      "display_no": "4354",
+      "priority": 5,
+      "ipcc_location": "Mong Kok L",
+      "main_line": "36284353",
+      "title": "Mong Kok L branch 4354"
+    }
+  ]
+}
