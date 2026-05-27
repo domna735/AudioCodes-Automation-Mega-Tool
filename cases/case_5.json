@@ -15,8 +15,16 @@
   "config": {
     "voip/line/0/auth_name": "user123",
     "voip/line/0/auth_password": "pass123",
+    "voip/line/0/enabled": "1",
     "voip/codec/codec_info/0/name": "PCMU",
     "voip/codec/codec_info/1/name": "PCMA"
   },
-  "behavior": { "latency_ms": 0, "status_code": 200, "mode": "normal" }
+  "behavior": { "latency_ms": 0, "status_code": 200, "mode": "normal" },
+  "behavior_map": {
+    "1": { "mode": "normal" },
+    "2": { "mode": "slow", "latency_ms": 1500 },
+    "3": { "mode": "error", "status_code": 500 },
+    "4": { "mode": "unavailable", "status_code": 503 },
+    "5": { "mode": "timeout", "timeout": true }
+  }
 }
