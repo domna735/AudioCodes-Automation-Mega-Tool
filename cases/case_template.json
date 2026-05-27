@@ -1,0 +1,25 @@
+{
+  "title": "ACSA Case template",
+  "description": "Template for ACSA case JSON files. Fields:\n - patches: array of patch objects (each has 'replace' list and/or 'set' dict)\n - config: optional mapping of config keys->values to be used by fake server export\n - behavior: optional behavior hints for fake server (latency_ms, status_code, mode)\n",
+  "patches": [
+    {
+      "replace": [
+        { "from": "old=val", "to": "new=val" }
+      ],
+      "set": {
+        "voip/line/0/auth_password": "9999"
+      }
+    }
+  ],
+  "config": {
+    "voip/line/0/auth_name": "user123",
+    "voip/line/0/auth_password": "pass123",
+    "voip/codec/codec_info/0/name": "PCMU",
+    "voip/codec/codec_info/1/name": "PCMA"
+  },
+  "behavior": {
+    "latency_ms": 0,
+    "status_code": 200,
+    "mode": "normal"
+  }
+}

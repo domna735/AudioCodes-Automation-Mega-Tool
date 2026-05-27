@@ -1,0 +1,22 @@
+{
+  "title": "ACSA Case 5 - codec ordering",
+  "description": "Reorder codec preference to ensure PCMU, PCMA first. Patches expressed as list to allow multiple steps.",
+  "patches": [
+    {
+      "set": {
+        "voip/codec/codec_info/0/name": "PCMU",
+        "voip/codec/codec_info/1/name": "PCMA",
+        "voip/codec/codec_info/2/name": "",
+        "voip/codec/codec_info/3/name": "",
+        "voip/codec/codec_info/4/name": ""
+      }
+    }
+  ],
+  "config": {
+    "voip/line/0/auth_name": "user123",
+    "voip/line/0/auth_password": "pass123",
+    "voip/codec/codec_info/0/name": "PCMU",
+    "voip/codec/codec_info/1/name": "PCMA"
+  },
+  "behavior": { "latency_ms": 0, "status_code": 200, "mode": "normal" }
+}

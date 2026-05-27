@@ -1,0 +1,19 @@
+{
+  "title": "ACSA Case 43 - SIP outbound proxy",
+  "description": "Disable outbound proxy and set redundant mode to SIMULTANEOUS.",
+  "patches": [
+    {
+      "set": {
+        "voip/sip/outbound_proxy/enabled": "0",
+        "voip/sip/redundant_outbound_proxy/mode": "SIMULTANEOUS"
+      }
+    }
+  ],
+  "config": {
+    "voip/line/0/auth_name": "user123",
+    "voip/line/0/auth_password": "pass123",
+    "voip/sip/outbound_proxy/enabled": "1",
+    "voip/sip/redundant_outbound_proxy/mode": "SEQUENTIAL"
+  },
+  "behavior": { "latency_ms": 0, "status_code": 200, "mode": "normal" }
+}

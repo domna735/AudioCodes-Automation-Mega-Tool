@@ -303,10 +303,24 @@ def load_case_config(case_id):
 
     Returns dict or list (patch content) or None on failure.
     """
+    # if case_id is a direct file path, load it
+    if not case_id:
+        return None
+
+    if os.path.exists(case_id) and case_id.lower().endswith('.json'):
+        try:
+            with open(case_id, 'r', encoding='utf-8') as fh:
+                return json.load(fh)
+        except Exception as exc:
+            record_error('N/A', 'case-load', f'讀取 {case_id} 失敗: {exc}')
+            return None
+
     candidates = [
         f"acsa_case_{case_id}_patch.json",
         f"acsa_case_{case_id}.json",
         f"case_{case_id}.json",
+        os.path.join('cases', f'case_{case_id}.json'),
+        os.path.join('cases', f'acsa_case_{case_id}_patch.json'),
     ]
 
     # try explicit names first
