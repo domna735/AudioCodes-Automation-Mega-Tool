@@ -256,3 +256,396 @@ python audiocodes_tool.py --mode reverse --case-dir cases/branch_mk --output-dir
 ### ✔ 適合大量部署（100–500 部）
 
 ---
+
+# ✅ **Part 1 — 常見錯誤與解決方法**
+
+## ⚠️ 常見錯誤與解決方法
+
+以下係現場最常見嘅錯誤訊息，以及對應嘅處理方式：
+
+---
+
+### **1. `Unauthorized`（401）**
+**原因：**  
+電話密碼錯誤、或該 IP 使用咗不同帳密。
+
+**解決方法：**
+- 檢查 `passwords.csv` 是否有對應 IP  
+- 若電話密碼唔同，請加入：
+
+```
+ip,username,password
+172.16.11.23,admin,9999
+,admin,1234
+```
+
+---
+
+### **2. `Not AudioCodes`（404 / 非預期 HTML）**
+**原因：**  
+該 IP 不是 AudioCodes 電話（例如 Printer、PC、AP）。
+
+**解決方法：**
+- 無需處理，工具會自動跳過  
+- 若該 IP 應該係電話 → 請檢查網段設定 `NETWORK_PREFIX`
+
+---
+
+### **3. `缺少必要 key`（Validator Error）**
+**原因：**  
+case JSON / patch JSON 未包含 validator 要求嘅 key。
+
+**解決方法：**
+- 檢查 `validation_rules.json`  
+- 補上缺少嘅 key，例如：
+
+```
+voip/line/0/enabled
+voip/line/0/auth_name
+voip/line/0/auth_password
+```
+
+---
+
+### **4. `File path contains spaces`（Windows 路徑問題）**
+**原因：**  
+Windows PowerShell 會將含空格路徑拆開。
+
+**解決方法：**  
+所有含空格路徑必須加引號：
+
+```
+--acsa-case "C:\project of auto conf download\cases\case_43.json"
+```
+
+---
+
+### **5. `Timeout` / `ConnectionError`**
+**原因：**  
+電話無回應、網絡不穩定、或 HTTPS 憑證問題。
+
+**解決方法：**
+- 開啟 retry（預設已開）  
+- 若 HTTPS 有問題 → 加 `--no-verify-tls`  
+- 若電話 offline → 稍後重試  
+
+---
+
+### **6. `Import failed`（上載失敗）**
+**原因：**  
+上載嘅 `.cfg` 格式錯誤或包含非法 key。
+
+**解決方法：**
+- 用 reverse generator 重新生成 `.cfg`  
+- 檢查是否有多餘空白或 BOM  
+- 檢查是否包含不支援嘅 key  
+
+---
+
+### **7. `Fake server 回傳 404`**
+**原因：**  
+fake server 只接受 `127.0.0.1` / `localhost`。
+
+**解決方法：**
+- 測試時請使用：
+
+```
+--prefix 127.0.0.
+```
+
+---
+
+# （Part 1 完成）
+
+---
+
+# ✅ **Part 2 — 完整分行部署示例**
+
+## 🏢 完整分行部署示例（Production Workflow）
+
+以下示例以「旺角分行（MK）」為例，  
+示範由真機 cfg → baseline → patch → reverse → 上載嘅完整流程。
+
+---
+
+### **① 下載真機設定（Backup）**
+
+```powershell
+python audiocodes_tool.py --mode download --prefix 172.16.11.
+```
+
+輸出：
+
+```
+backup_configs/
+  ├─ 000171906FCAB.cfg
+  ├─ 000171906FD45.cfg
+  ├─ ...
+```
+
+---
+
+### **② 生成 baseline + patch JSON（分行設定）**
+
+```powershell
+python branch_case_generator.py `
+  --cfg-dir "New branch MK real conf" `
+  --plan branch_plan_mk.json `
+  --output-dir cases/branch_mk
+```
+
+輸出：
+
+```
+cases/branch_mk/
+  ├─ baseline_000171906FCAB.json
+  ├─ case_000171906FCAB_patch.json
+  ├─ ...
+```
+
+---
+
+### **③ Dry‑Run（驗證差異，不上載）**
+
+```powershell
+python audiocodes_tool.py `
+  --mode acsa_fix `
+  --acsa-case cases/branch_mk/case_000171906FCAB_patch.json `
+  --dry-run
+```
+
+輸出：
+
+```
+成功：5
+失敗：0
+diff_reports/<MAC>.diff
+```
+
+---
+
+### **④ 生成可上載 `.cfg`（Reverse Generator）**
+
+```powershell
+python audiocodes_tool.py `
+  --mode reverse `
+  --case-dir cases/branch_mk `
+  --output-dir generated_cfg/mk
+```
+
+輸出：
+
+```
+generated_cfg/mk/
+  ├─ case_000171906FCAB.cfg
+  ├─ case_000171906FD45.cfg
+  ├─ ...
+```
+
+---
+
+### **⑤ 上載設定（正式套用）**
+
+```powershell
+python audiocodes_tool.py `
+  --mode acsa_fix `
+  --acsa-cases cases/branch_mk
+```
+
+---
+
+### **⑥（可選）Reboot 電話**
+
+```powershell
+python audiocodes_tool.py --mode acsa_fix --reboot
+```
+
+---
+
+# （Part 2 完成）
+
+---
+
+# ✅ **Part 3 — Case JSON Schema Overview**
+
+## 🧱 Case JSON 結構總覽（Schema Overview）
+
+Case JSON 支援以下欄位：
+
+```jsonc
+{
+  "config": { ... },              // 基礎設定（key=value）
+  "patches": [ ... ],             // 進階修改（set / replace）
+  "behavior": { ... },            // 全域假機行為
+  "behavior_map": { ... },        // per-host 假機行為
+  "endpoint_behavior": { ... },   // per-endpoint 假機行為
+  "random_error_rate": 0.1        // 隨機錯誤注入（測 retry）
+}
+```
+
+---
+
+### **1. `config`（最常用）**
+
+```json
+"config": {
+  "voip/line/0/description": "4350",
+  "voip/line/0/enabled": "1",
+  "system/display/message_on_screen": "36284353"
+}
+```
+
+---
+
+### **2. `patches`（set / replace）**
+
+```json
+"patches": [
+  { "set": { "voip/line/0/auth_name": "admin" } },
+  { "replace": { "PCMU": "PCMA" } }
+]
+```
+
+---
+
+### **3. `behavior`（全域假機行為）**
+
+```json
+"behavior": {
+  "mode": "slow",
+  "latency_ms": 500,
+  "status_code": 200
+}
+```
+
+---
+
+### **4. `behavior_map`（per-host 行為）**
+
+```json
+"behavior_map": {
+  "1": { "mode": "normal" },
+  "2": { "mode": "slow" },
+  "3": { "status_code": 500 },
+  "4": { "status_code": 503 },
+  "5": { "timeout": true }
+}
+```
+
+---
+
+### **5. `endpoint_behavior`（per-endpoint 行為）**
+
+```json
+"endpoint_behavior": {
+  "/AdminPage/export_cfg.cgi": { "latency_ms": 300 },
+  "/AdminPage/get_mac_address.cgi": { "status_code": 500 }
+}
+```
+
+---
+
+### **6. `random_error_rate`（隨機錯誤注入）**
+
+```json
+"random_error_rate": 0.1
+```
+
+---
+
+# （Part 3 完成）
+
+---
+
+# ✅ **Part 4 — Fake Server 行為示例**
+
+## 🧪 Fake Server 行為示例
+
+Fake Server 支援 Case‑Driven 行為控制，可用於：
+
+- 本地測試  
+- 模擬真機 timeout / error  
+- 模擬多部電話唔同行為  
+- 模擬 endpoint 特定錯誤  
+
+---
+
+### **① 啟動 Fake Server（正常模式）**
+
+```powershell
+python fake_ac_api.py
+```
+
+---
+
+### **② 用 Case JSON 控制假機行為**
+
+```powershell
+python fake_ac_api.py --case cases/case_5.json
+```
+
+---
+
+### **③ 行為示例：全域行為**
+
+```json
+"behavior": {
+  "mode": "slow",
+  "latency_ms": 800
+}
+```
+
+效果：
+
+- 所有 API 延遲 0.8 秒  
+- 適合測試 timeout handling  
+
+---
+
+### **④ 行為示例：per-host 行為**
+
+```json
+"behavior_map": {
+  "1": { "mode": "normal" },
+  "2": { "mode": "slow" },
+  "3": { "status_code": 500 },
+  "4": { "status_code": 503 },
+  "5": { "timeout": true }
+}
+```
+
+效果：
+
+| Host | 行為 |
+|------|------|
+| 127.0.0.1 | 正常 |
+| 127.0.0.2 | 慢 |
+| 127.0.0.3 | 500 |
+| 127.0.0.4 | 503 |
+| 127.0.0.5 | Timeout |
+
+---
+
+### **⑤ 行為示例：per-endpoint 行為**
+
+```json
+"endpoint_behavior": {
+  "/AdminPage/export_cfg.cgi": { "status_code": 500 },
+  "/AdminPage/get_mac_address.cgi": { "latency_ms": 2000 }
+}
+```
+
+---
+
+### **⑥ 行為示例：隨機錯誤注入**
+
+```json
+"random_error_rate": 0.15
+```
+
+效果：
+
+- 15% request → 隨機 500 / 503 / timeout  
+- 適合測試 retry/backoff  
+
+---
