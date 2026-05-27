@@ -153,6 +153,16 @@ python audiocodes_tool.py --mode acsa_fix
 
 The tool will generate diffs in `diff_reports/` and log results to `tool.log`.
 
+## 🧪 Local Fake Server Test
+
+For safe local testing, run the mock API server in this repo:
+
+```bash
+python fake_ac_api.py
+```
+
+It is hardened to answer only when the request host is `127.0.0.1` or `localhost`, so scan aliases like `127.0.0.2` will return `404` instead of being treated as devices.
+
 Menu:
 
 ```

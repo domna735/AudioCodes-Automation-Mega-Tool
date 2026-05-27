@@ -43,6 +43,16 @@ python audiocodes_tool.py --mode acsa_fix
 
 變更會產生差異檔於 `diff_reports/`，並在 `tool.log` 記錄處理結果。
 
+## 本地 Fake Server 測試
+
+如果你想喺本機測試工具，可以先啟動假 API：
+
+```powershell
+python fake_ac_api.py
+```
+
+呢個 mock server 只接受 `127.0.0.1` / `localhost`，所以 `127.0.0.2`、`127.0.0.3` 之類嘅 loopback alias 會直接回 `404`，唔會再被誤認為真電話。
+
 ---
 
 # 🧰 系統需求

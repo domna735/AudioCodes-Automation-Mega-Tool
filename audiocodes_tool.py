@@ -23,13 +23,14 @@ except ImportError:
 # ====== 可調整設定 ======
 USERNAME = "admin"
 PASSWORD = "1234"
-NETWORK_PREFIX = "172.16.11."
-TIMEOUT = 3
+NETWORK_PREFIX = "127.0.0."
+TIMEOUT = 1
 
 USE_HTTPS = False
 TRY_ALTERNATE_SCHEME = True
 VERIFY_TLS = False
 CA_CERT_PATH = ""
+ACSA_CASE_ID = None
 
 LOG_FILE = "tool.log"
 PATCH_FILE = "patch.json"
@@ -51,7 +52,7 @@ MODIFIED_DIR = "modified_configs"
 OUTPUT_DIR = "generated_cfg"
 DIFF_DIR = "diff_reports"
 
-SCAN_WORKERS = 50
+SCAN_WORKERS = 20
 PROCESS_WORKERS = 20
 # ========================
 
@@ -96,6 +97,8 @@ DEFAULT_PATCH_RULES = {
 LOGGER = logging.getLogger("audiocodes_tool")
 ERRORS = []
 ERROR_LOCK = Lock()
+RESULTS = []
+RESULT_LOCK = Lock()
 IP_CREDENTIALS = {}
 GLOBAL_CREDENTIALS = []
 PATH_CACHE = {
@@ -169,14 +172,24 @@ def record_error(ip, stage, reason):
     LOGGER.error("[%s][%s] %s", ip, stage, reason)
 
 
+def record_result(ip, status, elapsed_ms, reason=None):
+    entry = {"ip": ip, "status": status, "elapsed_ms": elapsed_ms}
+    if reason:
+        entry["reason"] = reason
+    with RESULT_LOCK:
+        RESULTS.append(entry)
+    LOGGER.info("Result %s: %s ms %s", ip, elapsed_ms, status)
+
+
 def get_base_urls(ip):
     preferred = "https" if USE_HTTPS else "http"
     alternate = "http" if preferred == "https" else "https"
 
-    urls = [f"{preferred}://{ip}"]
+    urls = [f"{preferred}://{ip}:5000"]   # use explicit port for fake server tests
     if TRY_ALTERNATE_SCHEME:
-        urls.append(f"{alternate}://{ip}")
+        urls.append(f"{alternate}://{ip}:5000")
     return urls
+
 
 
 def safe_request(method, url, **kwargs):
@@ -283,6 +296,42 @@ def get_auth_candidates(ip):
 def load_patch_rules():
     if not os.path.exists(PATCH_FILE):
         return DEFAULT_PATCH_RULES
+
+
+def load_case_config(case_id):
+    """Load an ACSA case JSON by case id (flexible filenames).
+
+    Returns dict or list (patch content) or None on failure.
+    """
+    candidates = [
+        f"acsa_case_{case_id}_patch.json",
+        f"acsa_case_{case_id}.json",
+        f"case_{case_id}.json",
+    ]
+
+    # try explicit names first
+    for p in candidates:
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as fh:
+                    return json.load(fh)
+            except Exception as exc:
+                record_error("N/A", "case-load", f"讀取 {p} 失敗: {exc}")
+                return None
+
+    # fallback: search for any file containing the case id
+    for fname in os.listdir('.'):
+        low = fname.lower()
+        if str(case_id) in low and fname.endswith('.json'):
+            try:
+                with open(fname, 'r', encoding='utf-8') as fh:
+                    return json.load(fh)
+            except Exception as exc:
+                record_error("N/A", "case-load", f"讀取 {fname} 失敗: {exc}")
+                return None
+
+    record_error("N/A", "case-load", f"找不到 case {case_id} 的 JSON 檔案")
+    return None
 
 
 def load_validation_rules():
@@ -448,15 +497,25 @@ def print_error_summary():
 
 
 def scan_ip(ip):
+    start = time.time()
+    last_reason = None
     for base_url in get_base_urls(ip):
         url = f"{base_url}/AdminPage/"
         response, error = safe_request("GET", url)
+        elapsed = int((time.time() - start) * 1000)
         if error:
+            last_reason = error
             continue
         if response is not None and response.status_code == 200 and "AudioCodes" in response.text:
             print(f"[FOUND] AudioCodes 電話 → {ip}")
             LOGGER.info("找到電話 %s (%s)", ip, url)
+            record_result(ip, "FOUND", elapsed)
             return ip
+        last_reason = f"HTTP {response.status_code}"
+
+    elapsed = int((time.time() - start) * 1000)
+    reason = last_reason or "not found"
+    record_result(ip, "NOT_FOUND", elapsed, reason)
     return None
 
 
@@ -488,6 +547,16 @@ def discover_phones(multithread=True):
 
     print(f"[INFO] 共發現 {len(found)} 部電話")
     LOGGER.info("掃描完成，共發現 %s 部電話", len(found))
+
+    # write per-IP results summary
+    try:
+        with open("results_scan.json", "w", encoding="utf-8") as rf:
+            import json as _json
+
+            with RESULT_LOCK:
+                _json.dump({"results": RESULTS}, rf, indent=2, ensure_ascii=False)
+    except Exception as exc:
+        LOGGER.error("寫入 results_scan.json 失敗: %s", exc)
     return found
 
 
@@ -840,6 +909,40 @@ def process_phone(ip):
     return True
 
 
+def process_single_device(ip, args):
+    LOGGER.info(f"[{ip}] 開始處理單一設備")
+
+    mac = get_mac_address(ip)
+    if not mac:
+        LOGGER.error(f"[{ip}] 無法取得 MAC")
+        return
+
+    LOGGER.info(f"[{ip}] MAC = {mac}")
+
+    cfg = download_config(ip)
+    if not cfg:
+        LOGGER.error(f"[{ip}] 無法下載設定")
+        return
+
+    modified_cfg = modify_config(cfg)
+
+    if args.dry_run:
+        LOGGER.info(f"[{ip}] Dry Run 模式，不上載設定")
+        save_diff(mac, cfg, modified_cfg)
+        return
+
+    upload_ok = upload_config(ip, modified_cfg)
+    if not upload_ok:
+        LOGGER.error(f"[{ip}] 上載失敗")
+        return
+
+    LOGGER.info(f"[{ip}] 上載成功")
+
+    if args.reboot:
+        reboot_device(ip)
+        LOGGER.info(f"[{ip}] 已送出 reboot 指令")
+
+
 def run_generate_mac_cfg():
     ensure_dir(OUTPUT_DIR)
 
@@ -863,7 +966,7 @@ def run_generate_mac_cfg():
     print("\n===== MAC.cfg 生成結果 =====")
     print(f"成功：{success}")
     print(f"失敗：{fail}")
-
+    
 
 def run_acsa_fix():
     """Apply predefined ACSA fixes (Case 5, Case 43) to all discovered phones."""
@@ -871,21 +974,32 @@ def run_acsa_fix():
     ensure_dir(MODIFIED_DIR)
     ensure_dir(DIFF_DIR)
 
-    # load patches
+    # load patches: prefer selected case if provided, else auto-load known candidates
     patches = []
-    candidates = ["acsa_case_5_patch.json", "acsa_case_43_patch.json"]
-    for p in candidates:
-        if os.path.exists(p):
-            try:
-                with open(p, "r", encoding="utf-8") as pf:
-                    data = json.load(pf)
-                    patches.append(data)
-            except Exception as exc:
-                LOGGER.error("讀取 ACSA patch %s 失敗: %s", p, exc)
+    if ACSA_CASE_ID:
+        case_cfg = load_case_config(ACSA_CASE_ID)
+        if not case_cfg:
+            print(f"[ERROR] 無法載入 ACSA case {ACSA_CASE_ID} 的 JSON 檔案")
+            return
+        # allow the case JSON to be either a single patch dict or a list of patches
+        if isinstance(case_cfg, list):
+            patches.extend(case_cfg)
+        else:
+            patches.append(case_cfg)
+    else:
+        candidates = ["acsa_case_5_patch.json", "acsa_case_43_patch.json"]
+        for p in candidates:
+            if os.path.exists(p):
+                try:
+                    with open(p, "r", encoding="utf-8") as pf:
+                        data = json.load(pf)
+                        patches.append(data)
+                except Exception as exc:
+                    LOGGER.error("讀取 ACSA patch %s 失敗: %s", p, exc)
 
-    if not patches:
-        print("[ERROR] 未找到任何 ACSA patch 檔案")
-        return
+        if not patches:
+            print("[ERROR] 未找到任何 ACSA patch 檔案")
+            return
 
     phones = discover_phones(multithread=True)
     success = 0
@@ -957,6 +1071,7 @@ def run_acsa_fix():
 def parse_args():
     parser = ArgumentParser(description="AudioCodes Automation Mega-Tool")
     parser.add_argument("--mode", choices=["full", "dry", "gen", "download", "acsa_fix", "menu"], default="menu")
+    parser.add_argument("--acsa-case", help="ACSA case id to apply (e.g. 5 or 43)")
     parser.add_argument("--prefix", help="Network prefix, e.g. 172.16.11.")
     parser.add_argument("--scan-workers", type=int, help="Thread workers for scan")
     parser.add_argument("--process-workers", type=int, help="Thread workers for processing")
@@ -968,6 +1083,7 @@ def parse_args():
     parser.add_argument("--reboot", action="store_true", help="Reboot phone after successful upload")
     parser.add_argument("--dry-run", action="store_true", help="Run scan/download/modify/diff/validate only")
     parser.add_argument("--no-progress", action="store_true", help="Disable progress bars")
+    parser.add_argument("--ip", help="指定單一 IP，不掃描網段", default=None)
     return parser.parse_args()
 
 
@@ -978,6 +1094,7 @@ def apply_args(args):
     global VERIFY_TLS, CA_CERT_PATH
     global RETRY_ATTEMPTS, REBOOT_AFTER_UPLOAD
     global ENABLE_PROGRESS, DRY_RUN
+    global LOGGER
 
     if args.prefix:
         NETWORK_PREFIX = args.prefix
@@ -1002,6 +1119,20 @@ def apply_args(args):
         DRY_RUN = True
     if args.no_progress:
         ENABLE_PROGRESS = False
+    if args.ip:
+        target_ip = args.ip
+        LOGGER.info(f"使用單一 IP 模式：{target_ip}")
+
+        # 直接處理單一 IP，不掃描
+        process_single_device(target_ip, args)
+        return
+    if getattr(args, 'acsa_case', None):
+        try:
+            # accept numeric or string ids
+            globals()['ACSA_CASE_ID'] = str(args.acsa_case).strip()
+            LOGGER.info("ACSA case set to %s", ACSA_CASE_ID)
+        except Exception:
+            LOGGER.error("無法設定 ACSA case: %s", args.acsa_case)
 
 
 # -------------------------------
@@ -1035,6 +1166,9 @@ def main():
         if args.dry_run:
             DRY_RUN = True
         run_acsa_fix()
+        return
+    if args.ip:
+        process_single_device(args.ip, args)
         return
 
     print("""
