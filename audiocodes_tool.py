@@ -315,16 +315,45 @@ def load_case_config(case_id):
             record_error('N/A', 'case-load', f'讀取 {case_id} 失敗: {exc}')
             return None
 
-    candidates = [
-        f"acsa_case_{case_id}_patch.json",
-        f"acsa_case_{case_id}.json",
-        f"case_{case_id}.json",
-        os.path.join('cases', f'case_{case_id}.json'),
-        os.path.join('cases', f'acsa_case_{case_id}_patch.json'),
-    ]
+    case_tokens = []
+    raw_token = str(case_id).strip()
+    case_tokens.append(raw_token)
+
+    stem = os.path.splitext(os.path.basename(raw_token))[0]
+    if stem and stem not in case_tokens:
+        case_tokens.append(stem)
+
+    for token in list(case_tokens):
+        if token.startswith('case_'):
+            suffix = token.split('_', 1)[1]
+            if suffix and suffix not in case_tokens:
+                case_tokens.append(suffix)
+        elif token.startswith('acsa_case_'):
+            suffix = token.split('acsa_case_', 1)[1]
+            suffix = suffix.replace('_patch', '')
+            if suffix and suffix not in case_tokens:
+                case_tokens.append(suffix)
+
+    candidates = []
+    for token in case_tokens:
+        candidates.extend([
+            f"acsa_case_{token}_patch.json",
+            f"acsa_case_{token}.json",
+            f"case_{token}.json",
+            os.path.join('cases', f'case_{token}.json'),
+            os.path.join('cases', f'acsa_case_{token}_patch.json'),
+        ])
+
+    seen_candidates = set()
+    unique_candidates = []
+    for candidate in candidates:
+        if candidate in seen_candidates:
+            continue
+        seen_candidates.add(candidate)
+        unique_candidates.append(candidate)
 
     # try explicit names first
-    for p in candidates:
+    for p in unique_candidates:
         if os.path.exists(p):
             try:
                 with open(p, "r", encoding="utf-8") as fh:
