@@ -268,6 +268,7 @@ python fake_ac_api.py --case cases/case_5.json
 ```
 
 - Case JSON fields:
+	- `random_error_rate`: optional float from `0` to `1`; injects random `500` / `503` / `timeout` responses
 	- `patches`: list of patch objects (each `replace` and/or `set`)
 	- `config`: optional mapping used by the fake server as exported config
 	- `behavior`: optional `{ "latency_ms": <ms>, "status_code": <int>, "mode": "normal|timeout|error" }`

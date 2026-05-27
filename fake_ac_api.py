@@ -1,5 +1,6 @@
 from flask import Flask, request, Response
 import base64
+import random
 import time
 import os
 import json
@@ -114,6 +115,22 @@ def resolve_behavior(host_ip, endpoint=None):
 
 def apply_behavior(behavior):
     """Apply latency, timeout, or error based on behavior dict."""
+    # random error injection (resilience testing)
+    error_rate = behavior.get("random_error_rate", 0)
+    try:
+        error_rate = float(error_rate)
+    except Exception:
+        error_rate = 0
+
+    if error_rate > 0 and random.random() < error_rate:
+        outcome = random.choice(["500", "503", "timeout"])
+        if outcome == "500":
+            return Response("Random Server Error", status=500)
+        if outcome == "503":
+            return Response("Random Service Unavailable", status=503)
+        time.sleep(999)
+        return Response("Random Timeout", status=504)
+
     # timeout
     if behavior.get("timeout"):
         time.sleep(999)

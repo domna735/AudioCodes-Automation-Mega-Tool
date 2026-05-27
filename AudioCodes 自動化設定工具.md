@@ -30,6 +30,7 @@
 	- Case 43：調整 SIP Outbound Proxy 設定
 - 放置檔案：`acsa_case_5_patch.json`、`acsa_case_43_patch.json`（專案根目錄）
 - 亦可直接用 `cases/case_5.json`、`cases/case_43.json`，並支援 `behavior_map` / `endpoint_behavior` 做假機行為控制
+- `random_error_rate` 可用來注入隨機 500 / 503 / timeout，測 retry / timeout handling
 - 執行（先用 Dry Run 檢查差異，不上載）：
 
 ```bash

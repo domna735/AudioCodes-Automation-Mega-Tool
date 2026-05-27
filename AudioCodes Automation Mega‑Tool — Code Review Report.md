@@ -227,6 +227,7 @@ This allows:
 - Workflow supported: Dry Run (`--dry-run`) to generate diffs and validate before any upload, then live apply without `--dry-run` to upload and (optionally) reboot.
 - Outputs: per‑device diffs in `diff_reports/` and logs in `tool.log`.
 - The fake server is case-driven and now supports `behavior_map` plus `endpoint_behavior`, so you can simulate route-specific latency or failures without code changes.
+- `random_error_rate` can be enabled to inject random `500` / `503` / `timeout` responses and validate retry resilience.
 - On Windows, quote any `--acsa-case` path that contains spaces.
 
 **Recommendation:** Use Dry Run first on a representative subnet, review diffs, then run live on the target batches.
