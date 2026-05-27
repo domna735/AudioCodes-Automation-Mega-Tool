@@ -251,3 +251,26 @@ Phone reboot → auto download.
 
 This Mega‑Tool provides a complete automation solution for AudioCodes IP Phones,  
 reducing manual workload and deployment time.
+
+---
+
+# 🔬 ACSA Case‑Driven Mode (quick start)
+
+Use JSON case files to describe patch rules and (optionally) fake‑server behavior.
+
+- Put cases under `cases/` or reference a JSON file directly.
+- Example commands:
+
+```
+python audiocodes_tool.py --mode acsa_fix --acsa-case 5 --dry-run
+python audiocodes_tool.py --mode acsa_fix --acsa-case cases/case_5.json --dry-run
+python fake_ac_api.py --case cases/case_5.json
+```
+
+- Case JSON fields:
+	- `patches`: list of patch objects (each `replace` and/or `set`)
+	- `config`: optional mapping used by the fake server as exported config
+	- `behavior`: optional `{ "latency_ms": <ms>, "status_code": <int>, "mode": "normal|timeout|error" }`
+
+This lets you add new ACSA fixes by editing/adding JSON files — no code changes required.
+
