@@ -233,6 +233,7 @@ This allows:
 - Case JSON files can now be rendered back into uploadable cfg files with the new `--mode reverse` workflow.
 - CLI polish added: built-in `--help`, `--version` (`AudioCodes Mega-Tool v1.0`), `--timeout <sec>`, and `--workers <count>` for tuning request timeout and thread counts without touching the architecture.
 - Verified the full single-device flow against the fake server on `127.0.0.1` after fixing the patch loader and single-device upload path.
+- Added a multi-device mock-server path with `--targets` so the full flow can be tested against several fake phones without a slow subnet scan.
 
 **Recommendation:** Use Dry Run first on a representative subnet, review diffs, then run live on the target batches.
 

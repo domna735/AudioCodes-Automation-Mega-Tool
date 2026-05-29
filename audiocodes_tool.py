@@ -35,6 +35,7 @@ REVERSE_CASE_FILE = None
 REVERSE_CASE_DIR = None
 REVERSE_OUTPUT_DIR = "generated_cfg/reversed_cfg"
 TOOL_VERSION = "AudioCodes Mega-Tool v1.0"
+TARGET_IPS = []
 
 LOG_FILE = "tool.log"
 PATCH_FILE = "patch.json"
@@ -999,6 +1000,90 @@ def run_full_flow():
     print(f"失敗：{fail}")
 
 
+def run_full_flow_for_targets(target_ips):
+    ensure_dir(BACKUP_DIR)
+    ensure_dir(MODIFIED_DIR)
+    ensure_dir(DIFF_DIR)
+
+    success = 0
+    fail = 0
+
+    iterator = progress_iter(target_ips, total=len(target_ips), desc="Full Flow")
+    for ip in iterator:
+        print(f"\n===== 處理電話 {ip} =====")
+
+        mac = get_mac_address(ip)
+        if not mac:
+            print(f"[FAIL] {ip} → 無法讀取 MAC")
+            fail += 1
+            continue
+
+        raw_cfg = download_config(ip)
+        if not raw_cfg:
+            print(f"[FAIL] {ip} → 無法下載設定")
+            fail += 1
+            continue
+
+        backup_path = os.path.join(BACKUP_DIR, f"{mac}.orig.cfg")
+        try:
+            with open(backup_path, "wb") as backup_file:
+                backup_file.write(raw_cfg)
+        except Exception as exc:
+            record_error(ip, "backup-write", f"寫入備份失敗: {exc}")
+            fail += 1
+            continue
+
+        modified_bytes = modify_config(raw_cfg)
+        original_text = raw_cfg.decode("utf-8", errors="ignore")
+        modified_text = modified_bytes.decode("utf-8", errors="ignore")
+
+        valid, validation_errors = validate_config_text(modified_text)
+        if not valid:
+            record_error(ip, "config-validation", "; ".join(validation_errors[:5]))
+            print(f"[FAIL] {ip} → 修改後設定驗證失敗")
+            fail += 1
+            continue
+
+        modified_path = os.path.join(MODIFIED_DIR, f"{mac}.cfg")
+        try:
+            with open(modified_path, "wb") as modified_file:
+                modified_file.write(modified_bytes)
+        except Exception as exc:
+            record_error(ip, "modified-write", f"寫入修改檔失敗: {exc}")
+            fail += 1
+            continue
+
+        try:
+            diff_path = write_diff_report(mac, original_text, modified_text)
+            LOGGER.info("%s 差異檔已寫入: %s", ip, diff_path)
+        except Exception as exc:
+            record_error(ip, "diff-write", f"寫入差異檔失敗: {exc}")
+
+        if DRY_RUN:
+            print(f"[DRY-RUN] {ip} → 驗證完成，已跳過上載")
+            LOGGER.info("%s dry-run 完成，已跳過上載", ip)
+            success += 1
+            continue
+
+        if upload_config(ip, modified_path):
+            print(f"[OK] {ip} → 上載成功")
+            LOGGER.info("%s 上載成功", ip)
+
+            if REBOOT_AFTER_UPLOAD:
+                if reboot_phone(ip):
+                    print(f"[OK] {ip} → 已送出重啟")
+                else:
+                    print(f"[WARN] {ip} → 重啟命令失敗")
+            success += 1
+        else:
+            print(f"[FAIL] {ip} → 上載失敗")
+            fail += 1
+
+    print("\n===== Full Flow 結果 =====")
+    print(f"成功：{success}")
+    print(f"失敗：{fail}")
+
+
 # -------------------------------
 # Mode 3：Download‑Only（掃描 → 下載）
 # -------------------------------
@@ -1260,6 +1345,7 @@ def parse_args():
     parser.add_argument("--case-dir", help="Directory of case JSON files to convert back into cfg")
     parser.add_argument("--output-dir", help="Output directory for generated cfg files")
     parser.add_argument("--prefix", help="Network prefix, e.g. 172.16.11.")
+    parser.add_argument("--targets", help="Comma-separated IP list to process directly without scanning")
     parser.add_argument("--timeout", type=int, help="Global request timeout in seconds")
     parser.add_argument("--workers", type=int, help="Set both scan and process worker counts")
     parser.add_argument("--scan-workers", type=int, help="Thread workers for scan")
@@ -1285,9 +1371,12 @@ def apply_args(args):
     global ENABLE_PROGRESS, DRY_RUN
     global LOGGER
     global REVERSE_CASE_FILE, REVERSE_CASE_DIR, REVERSE_OUTPUT_DIR
+    global TARGET_IPS
 
     if args.prefix:
         NETWORK_PREFIX = args.prefix
+    if args.targets:
+        TARGET_IPS = [item.strip() for item in args.targets.split(",") if item.strip()]
     if args.timeout is not None:
         TIMEOUT = max(1, args.timeout)
     if args.workers:
@@ -1348,9 +1437,15 @@ def main():
         process_single_device(args.ip, args)
         return
 
+    if TARGET_IPS:
+        LOGGER.info("使用指定多機模式：%s", ", ".join(TARGET_IPS))
+
     LOGGER.info("工具啟動，HTTPS=%s, TLS_VERIFY=%s", USE_HTTPS, VERIFY_TLS)
 
     if args.mode == "full":
+        if TARGET_IPS:
+            run_full_flow_for_targets(TARGET_IPS)
+            return
         run_full_flow()
         return
     if args.mode == "dry":

@@ -242,6 +242,31 @@ python audiocodes_tool.py --mode reverse --case-dir cases/branch_mk --output-dir
 
 這個 reverse 流程會先讀 `config`，再套用 `patches`，最後輸出成純 `key=value` 格式，方便直接用 device import endpoint 上載。
 
+---
+
+## 多機 Fake Server 測試
+
+如果你要喺 mock server 做正式前測試，建議用 `--targets` 直接指定多部假機 IP，而唔係掃整個網段：
+
+```powershell
+python audiocodes_tool.py --mode full --targets 127.0.0.1,127.0.0.2,127.0.0.3 --workers 10 --timeout 1 --no-alt-scheme --no-progress
+```
+
+好處：
+
+- 仍然係 multi-device full flow
+- 會做下載、修改、diff、上載
+- 避免掃描 1–254 太慢
+- 可以配合 `fake_ac_api.py` 的 `behavior_map` / `endpoint_behavior` 做 deterministic 測試
+
+如果你係準備真機上線，建議先用 `--mode download` 收集真實 cfg，再做 branch case 生成、reverse 生成，最後先上載。
+
+### Worker 建議
+
+- `--workers 10`：一般 mock 測試夠用
+- `--workers 20`：較接近實際大量部署
+- `--workers 30+`：只建議喺穩定網絡同較強機器上使用
+
 # 🎉 而家擁有嘅能力
 
 ### ✔ 自動掃描電話  

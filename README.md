@@ -317,3 +317,15 @@ python audiocodes_tool.py --mode reverse --case-dir cases/branch_mk --output-dir
 
 This reads the `config` block, applies any `patches`, validates the final text, and writes a plain key=value cfg that can be uploaded with the device import endpoint.
 
+## 🧪 Multi-Device Fake Server Test
+
+For mock-server validation before real deployment, use an explicit target list instead of a full subnet scan:
+
+```powershell
+python audiocodes_tool.py --mode full --targets 127.0.0.1,127.0.0.2,127.0.0.3 --workers 10 --timeout 1 --no-alt-scheme --no-progress
+```
+
+This keeps the flow multi-device, but skips the slow scan over 1-254. It is the recommended way to validate download, modify, diff, upload, and retry behavior against `fake_ac_api.py`.
+
+For real-device readiness, keep using `--mode download` first to collect the live configs, then run the branch-case generation and reverse-generation steps above.
+
