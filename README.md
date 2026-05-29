@@ -335,6 +335,8 @@ python fake_ac_api.py --host-list 127.0.0.1,127.0.0.2,127.0.0.3
 
 For real-device readiness, keep using `--mode download` first to collect the live configs, then run the branch-case generation and reverse-generation steps above.
 
+For real phones, the scan now checks both `/AdminPage/` and `/mainform.cgi?go=mainframe.htm`, and it uses port `80` by default outside loopback. That means your URL like `http://192.168.33.203/mainform.cgi?go=mainframe.htm` is now aligned with the scan path.
+
 ## ✅ Preflight Check Before Production
 
 Use this order before touching real phones:

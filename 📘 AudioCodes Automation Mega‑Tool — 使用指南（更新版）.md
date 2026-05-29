@@ -240,6 +240,15 @@ python fake_ac_api.py --host-list 127.0.0.1,127.0.0.2,127.0.0.3
 
 如果你冇加任何參數，預設只會有 1 部假機，方便安全測試。
 
+### 真機掃描注意
+
+對於實際 AudioCodes 電話，工具會同時嘗試：
+
+- `/AdminPage/`
+- `/mainform.cgi?go=mainframe.htm`
+
+而且非 `127.*` 目標會預設用 `80` 埠，不再硬加 `5000`。所以如果你張開嘅真機網址係 `http://192.168.33.203/mainform.cgi?go=mainframe.htm`，掃描就會對得上。
+
 ---
 
 ## Reverse Generator（JSON → cfg）

@@ -23,7 +23,7 @@ except ImportError:
 # ====== 可調整設定 ======
 USERNAME = "admin"
 PASSWORD = "1234"
-NETWORK_PREFIX = "127.0.0."
+NETWORK_PREFIX = "192.168.33."
 TIMEOUT = 1
 
 USE_HTTPS = False
@@ -51,6 +51,12 @@ RETRY_BACKOFF_BASE = 0.6
 RETRY_BACKOFF_MAX = 3.0
 REBOOT_AFTER_UPLOAD = False
 DRY_RUN = False
+DEVICE_PORT = 80
+FAKE_SERVER_PORT = 5000
+SCAN_PATHS = [
+    "/AdminPage/",
+    "/mainform.cgi?go=mainframe.htm",
+]
 
 BACKUP_DIR = "backup_configs"
 MODIFIED_DIR = "modified_configs"
@@ -186,13 +192,19 @@ def record_result(ip, status, elapsed_ms, reason=None):
     LOGGER.info("Result %s: %s ms %s", ip, elapsed_ms, status)
 
 
+def is_loopback_target(ip):
+    return ip.startswith("127.") or ip.lower() == "localhost"
+
+
 def get_base_urls(ip):
     preferred = "https" if USE_HTTPS else "http"
     alternate = "http" if preferred == "https" else "https"
 
-    urls = [f"{preferred}://{ip}:5000"]   # use explicit port for fake server tests
+    port = FAKE_SERVER_PORT if is_loopback_target(ip) else DEVICE_PORT
+
+    urls = [f"{preferred}://{ip}:{port}"]
     if TRY_ALTERNATE_SCHEME:
-        urls.append(f"{alternate}://{ip}:5000")
+        urls.append(f"{alternate}://{ip}:{port}")
     return urls
 
 
@@ -668,18 +680,31 @@ def scan_ip(ip):
     start = time.time()
     last_reason = None
     for base_url in get_base_urls(ip):
-        url = f"{base_url}/AdminPage/"
-        response, error = safe_request("GET", url)
-        elapsed = int((time.time() - start) * 1000)
-        if error:
-            last_reason = error
-            continue
-        if response is not None and response.status_code == 200 and "AudioCodes" in response.text:
-            print(f"[FOUND] AudioCodes 電話 → {ip}")
-            LOGGER.info("找到電話 %s (%s)", ip, url)
-            record_result(ip, "FOUND", elapsed)
-            return ip
-        last_reason = f"HTTP {response.status_code}"
+        for path in SCAN_PATHS:
+            url = f"{base_url}{path}"
+            response, error = safe_request("GET", url)
+            elapsed = int((time.time() - start) * 1000)
+            if error:
+                last_reason = error
+                continue
+            if response is None:
+                last_reason = "no response"
+                continue
+
+            if response.status_code == 200:
+                text = response.text or ""
+                if path == "/AdminPage/" and "AudioCodes" in text:
+                    print(f"[FOUND] AudioCodes 電話 → {ip}")
+                    LOGGER.info("找到電話 %s (%s)", ip, url)
+                    record_result(ip, "FOUND", elapsed)
+                    return ip
+                if path == "/mainform.cgi?go=mainframe.htm" and len(text.strip()) > 20:
+                    print(f"[FOUND] AudioCodes 電話 → {ip}")
+                    LOGGER.info("找到電話 %s (%s)", ip, url)
+                    record_result(ip, "FOUND", elapsed)
+                    return ip
+
+            last_reason = f"HTTP {response.status_code}"
 
     elapsed = int((time.time() - start) * 1000)
     reason = last_reason or "not found"
