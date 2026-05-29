@@ -326,6 +326,22 @@ python audiocodes_tool.py --mode full --targets 127.0.0.1,127.0.0.2,127.0.0.3 --
 ```
 
 This keeps the flow multi-device, but skips the slow scan over 1-254. It is the recommended way to validate download, modify, diff, upload, and retry behavior against `fake_ac_api.py`.
+`fake_ac_api.py` is safe by default now: if you start it without options, it only exposes one mock host. To simulate more devices, pass either `--hosts 5` or an explicit `--host-list`.
+
+```powershell
+python fake_ac_api.py --case cases/case_5.json --hosts 5
+python fake_ac_api.py --host-list 127.0.0.1,127.0.0.2,127.0.0.3
+```
 
 For real-device readiness, keep using `--mode download` first to collect the live configs, then run the branch-case generation and reverse-generation steps above.
+
+## ✅ Preflight Check Before Production
+
+Use this order before touching real phones:
+
+1. Run fake-server multi-device tests with `--targets` and a limited `--hosts` or `--host-list`.
+2. Confirm each mock phone shows a distinct MAC in the logs and `modified_configs/`.
+3. Use `--workers` to tune concurrency for your environment; start with `10` for a pilot batch.
+4. Run `--mode download` on a small real subnet first and review `backup_configs/`.
+5. Generate branch cases, run `--dry-run`, then do a final `reverse` output check before upload.
 

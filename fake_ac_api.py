@@ -10,7 +10,10 @@ app = Flask(__name__)
 
 USERNAME = "admin"
 PASSWORD = "1234"
-FAKE_MAC = "00:11:22:33:44:55"
+DEFAULT_FAKE_MAC = "00:11:22:33:44:55"
+HOST_PREFIX = "127.0.0."
+MOCK_HOSTS = set()
+HOST_MAC_MAP = {}
 
 # ============================================================
 #  Case Loader
@@ -46,16 +49,81 @@ def load_case(case_arg=None):
     return None
 
 
+def parse_host_list(host_list_text):
+    hosts = []
+    if not host_list_text:
+        return hosts
+    for item in host_list_text.split(","):
+        host = item.strip()
+        if host:
+            hosts.append(host)
+    return hosts
+
+
+def build_mock_hosts(case=None, host_prefix=HOST_PREFIX, host_count=None, host_list_text=None):
+    explicit_hosts = parse_host_list(host_list_text)
+    if explicit_hosts:
+        return explicit_hosts
+
+    if host_count is not None and host_count > 0:
+        return [f"{host_prefix}{idx}" for idx in range(1, host_count + 1)]
+
+    if case and isinstance(case.get("behavior_map"), dict):
+        derived_hosts = []
+        for key in case.get("behavior_map", {}).keys():
+            key_text = str(key).strip()
+            if not key_text:
+                continue
+            if key_text.count(".") == 3:
+                derived_hosts.append(key_text)
+            elif key_text.isdigit():
+                derived_hosts.append(f"{host_prefix}{key_text}")
+        if derived_hosts:
+            return sorted(set(derived_hosts))
+
+    return [f"{host_prefix}1"]
+
+
+def host_is_mocked(host):
+    return host in MOCK_HOSTS
+
+
+def fake_mac_for_host(host):
+    if host in HOST_MAC_MAP:
+        return HOST_MAC_MAP[host]
+
+    last_octet = host.split(".")[-1]
+    try:
+        suffix = int(last_octet) & 0xFF
+    except Exception:
+        suffix = 0x55
+    return f"00:11:22:33:44:{suffix:02X}"
+
+
+def deny_unknown_host(host):
+    return Response("Not Found", status=404)
+
+
 # ============================================================
 #  Load Case at Startup
 # ============================================================
 
 CASE = None
+CLI_HOST_PREFIX = HOST_PREFIX
+CLI_HOST_COUNT = None
+CLI_HOST_LIST = None
 try:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--case")
+    parser.add_argument("--hosts", type=int)
+    parser.add_argument("--host-prefix")
+    parser.add_argument("--host-list")
     ns, _ = parser.parse_known_args()
     CASE = load_case(ns.case)
+    if ns.host_prefix:
+        CLI_HOST_PREFIX = ns.host_prefix
+    CLI_HOST_COUNT = ns.hosts
+    CLI_HOST_LIST = ns.host_list
 except Exception:
     CASE = load_case(os.environ.get("ACSA_CASE"))
 
@@ -81,6 +149,9 @@ BEHAVIOR_MAP = CASE.get("behavior_map", {}) if CASE else {}
 
 # Endpoint behavior map (global overrides by route)
 ENDPOINT_BEHAVIOR = CASE.get("endpoint_behavior", {}) if CASE else {}
+
+MOCK_HOSTS = set(build_mock_hosts(CASE, CLI_HOST_PREFIX, CLI_HOST_COUNT, CLI_HOST_LIST))
+HOST_MAC_MAP = {host: fake_mac_for_host(host) for host in MOCK_HOSTS}
 
 
 # ============================================================
@@ -188,6 +259,8 @@ def require_auth():
 @app.route("/AdminPage/")
 def admin_page():
     host = request.host.split(":")[0]
+    if not host_is_mocked(host):
+        return deny_unknown_host(host)
     behavior = resolve_behavior(host, "/AdminPage/")
 
     override = apply_behavior(behavior)
@@ -203,20 +276,25 @@ def get_mac():
         return require_auth()
 
     host = request.host.split(":")[0]
+    if not host_is_mocked(host):
+        return deny_unknown_host(host)
     behavior = resolve_behavior(host, "/AdminPage/get_mac_address.cgi")
 
     override = apply_behavior(behavior)
     if override:
         return override
 
-    return Response(FAKE_MAC, mimetype="text/plain")
+    return Response(fake_mac_for_host(host), mimetype="text/plain")
 
 
 @app.route("/AdminPage/get_device_info.cgi")
 def get_device_info():
     if not check_auth(request):
         return require_auth()
-    return Response(f"MAC={FAKE_MAC}", mimetype="text/plain")
+    host = request.host.split(":")[0]
+    if not host_is_mocked(host):
+        return deny_unknown_host(host)
+    return Response(f"MAC={fake_mac_for_host(host)}", mimetype="text/plain")
 
 
 @app.route("/AdminPage/conf_export.cgi")
@@ -226,6 +304,8 @@ def export_cfg():
         return require_auth()
 
     host = request.host.split(":")[0]
+    if not host_is_mocked(host):
+        return deny_unknown_host(host)
     behavior = resolve_behavior(host, "/AdminPage/conf_export.cgi")
 
     override = apply_behavior(behavior)
@@ -242,6 +322,10 @@ def import_cfg():
     if not check_auth(request):
         return require_auth()
 
+    host = request.host.split(":")[0]
+    if not host_is_mocked(host):
+        return deny_unknown_host(host)
+
     file = request.files.get("file")
     if file:
         print("=== Received Config Upload ===")
@@ -256,6 +340,9 @@ def import_cfg():
 def reboot():
     if not check_auth(request):
         return require_auth()
+    host = request.host.split(":")[0]
+    if not host_is_mocked(host):
+        return deny_unknown_host(host)
     return "Rebooting", 200
 
 
@@ -265,5 +352,6 @@ def reboot():
 
 if __name__ == "__main__":
     print("Loaded Case:", CASE)
+    print("Mock Hosts:", sorted(MOCK_HOSTS))
     app.run(host="0.0.0.0", port=5000)
 

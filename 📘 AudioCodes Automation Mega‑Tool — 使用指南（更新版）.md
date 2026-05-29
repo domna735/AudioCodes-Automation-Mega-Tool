@@ -224,6 +224,22 @@ python branch_case_generator.py --plan branch_plan_mk.json --output-dir cases/br
 
 若實際現場 key 名稱不同，改 `branch_plan_mk.json` 即可。
 
+### ②-1. 啟動安全版 Fake Server（建議）
+
+預設 fake server 而家只會暴露少量 mock host，不會再將整個 `127.0.0.0/8` 當成電話。要模擬多部假機，請指定 host 數量或者 host list：
+
+```powershell
+python fake_ac_api.py --case cases/case_5.json --hosts 5
+```
+
+或者：
+
+```powershell
+python fake_ac_api.py --host-list 127.0.0.1,127.0.0.2,127.0.0.3
+```
+
+如果你冇加任何參數，預設只會有 1 部假機，方便安全測試。
+
 ---
 
 ## Reverse Generator（JSON → cfg）
