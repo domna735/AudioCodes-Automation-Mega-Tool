@@ -1,14 +1,20 @@
+import base64
 import concurrent.futures
 import csv
+import base64
 import json
 import logging
 import os
+import re
+import re
 import time
 from argparse import ArgumentParser
 from difflib import unified_diff
 from logging.handlers import QueueHandler, QueueListener
 from queue import Queue
+from urllib.parse import urljoin, urlsplit
 from threading import Lock
+from urllib.parse import urljoin, urlsplit
 
 import requests
 import urllib3
@@ -24,7 +30,9 @@ except ImportError:
 USERNAME = "admin"
 PASSWORD = "1234"
 NETWORK_PREFIX = "192.168.33."
-TIMEOUT = 1
+TIMEOUT = 5
+SCAN_TIMEOUT = 1
+DEVICE_TIMEOUT = 5
 
 USE_HTTPS = False
 TRY_ALTERNATE_SCHEME = True
@@ -53,6 +61,8 @@ REBOOT_AFTER_UPLOAD = False
 DRY_RUN = False
 DEVICE_PORT = 80
 FAKE_SERVER_PORT = 5000
+WEBGUI_LOGIN_PATH = "/login.cgi"
+WEBGUI_MANU_CONFIG_PATH = "/mainform.cgi?go=manu_config.htm"
 SCAN_PATHS = [
     "/AdminPage/",
     "/mainform.cgi?go=mainframe.htm",
@@ -213,13 +223,14 @@ def safe_request(method, url, **kwargs):
     attempts = RETRY_ATTEMPTS if ENABLE_RETRY else 1
     last_error = None
     status_for_retry = {408, 429, 500, 502, 503, 504}
+    timeout = kwargs.pop("timeout", TIMEOUT)
 
     for idx in range(attempts):
         try:
             response = requests.request(
                 method,
                 url,
-                timeout=TIMEOUT,
+                timeout=timeout,
                 verify=verify_tls_value(),
                 **kwargs,
             )
@@ -236,6 +247,164 @@ def safe_request(method, url, **kwargs):
                 time.sleep(delay)
 
     return None, last_error
+
+
+def encode_webgui_password(password):
+    return base64.b64encode(password.encode("utf-8")).decode("ascii")
+
+
+def create_webgui_session(base_url, username, password):
+    session = requests.Session()
+    login_response = session.post(
+        f"{base_url}{WEBGUI_LOGIN_PATH}",
+        data={
+            "user": username,
+            "psw_plain": password,
+            "psw": encode_webgui_password(password),
+        },
+        timeout=DEVICE_TIMEOUT,
+        verify=verify_tls_value(),
+    )
+
+    if login_response.status_code != 200 or not session.cookies.get("session"):
+        return None, f"login HTTP {login_response.status_code}"
+
+    return session, None
+
+
+def fetch_webgui_config_info(ip):
+    last_reason = "無可用 WebGUI 設定頁面"
+    candidates = get_auth_candidates(ip)
+
+    for base_url in get_base_urls(ip):
+        manu_url = f"{base_url}{WEBGUI_MANU_CONFIG_PATH}"
+        for username, password in candidates:
+            try:
+                session, login_error = create_webgui_session(base_url, username, password)
+            except RequestException as exc:
+                last_reason = f"login error: {exc}"
+                continue
+
+            if not session:
+                last_reason = login_error or "login failed"
+                continue
+
+            try:
+                manu_response = session.get(
+                    manu_url,
+                    timeout=DEVICE_TIMEOUT,
+                    verify=verify_tls_value(),
+                )
+            except RequestException as exc:
+                last_reason = f"config page error: {exc}"
+                continue
+
+            if manu_response.status_code != 200:
+                last_reason = f"config page HTTP {manu_response.status_code}"
+                continue
+
+            match = re.search(r"var\s+url=['\"]([^'\"]+\.cfg)['\"]", manu_response.text, re.I)
+            if not match:
+                last_reason = "找不到 WebGUI 下載路徑"
+                continue
+
+            download_url = urljoin(manu_url, match.group(1))
+            file_name = os.path.basename(urlsplit(download_url).path)
+            return {
+                "session": session,
+                "download_url": download_url,
+                "file_name": file_name,
+            }
+
+    record_error(ip, "webgui-login", last_reason)
+    return None
+
+
+def extract_mac_from_cfg_name(file_name):
+    stem = os.path.splitext(os.path.basename(file_name))[0]
+    match = re.search(r"([0-9A-Fa-f]{12})$", stem)
+    if match:
+        return match.group(1).upper()
+    if "_" in stem:
+        tail = stem.split("_")[-1]
+        if re.fullmatch(r"[0-9A-Fa-f]{12}", tail):
+            return tail.upper()
+    return None
+
+
+def upload_config_webgui(ip, cfg_path):
+    last_reason = "無可用 WebGUI 上載 API 回應"
+    candidates = get_auth_candidates(ip)
+
+    try:
+        with open(cfg_path, "rb") as cfg_file:
+            cfg_bytes = cfg_file.read()
+    except Exception as exc:
+        record_error(ip, "upload-config", f"讀取上載檔案失敗: {exc}")
+        return False
+
+    file_name = os.path.basename(cfg_path)
+    for base_url in get_base_urls(ip):
+        for username, password in candidates:
+            try:
+                session, login_error = create_webgui_session(base_url, username, password)
+            except RequestException as exc:
+                last_reason = f"login error: {exc}"
+                continue
+
+            if not session:
+                last_reason = login_error or "login failed"
+                continue
+
+            try:
+                response = session.post(
+                    f"{base_url}/mainform.cgi/auto_config.htm",
+                    files={"upname": (file_name, cfg_bytes, "application/octet-stream")},
+                    data={"TYPE": "6"},
+                    timeout=DEVICE_TIMEOUT,
+                    verify=verify_tls_value(),
+                )
+                if response.status_code in (200, 302):
+                    return True
+                last_reason = f"WebGUI upload HTTP {response.status_code}"
+            except RequestException as exc:
+                last_reason = f"WebGUI upload error: {exc}"
+
+    record_error(ip, "upload-config", last_reason)
+    return False
+
+
+def reboot_phone_webgui(ip):
+    last_reason = "無可用 WebGUI 重啟 API 回應"
+    candidates = get_auth_candidates(ip)
+
+    for base_url in get_base_urls(ip):
+        for username, password in candidates:
+            try:
+                session, login_error = create_webgui_session(base_url, username, password)
+            except RequestException as exc:
+                last_reason = f"login error: {exc}"
+                continue
+
+            if not session:
+                last_reason = login_error or "login failed"
+                continue
+
+            try:
+                response = session.post(
+                    f"{base_url}/mainform.cgi/reboot.htm",
+                    timeout=DEVICE_TIMEOUT,
+                    verify=verify_tls_value(),
+                )
+                if response.status_code in (200, 202, 302):
+                    LOGGER.info("%s 重啟命令已送出", ip)
+                    return True
+                last_reason = f"WebGUI reboot HTTP {response.status_code}"
+            except RequestException as exc:
+                last_reason = f"WebGUI reboot error: {exc}"
+
+    record_error(ip, "reboot", last_reason)
+    return False
 
 
 def get_cached_paths(ip, path_group):
@@ -682,7 +851,7 @@ def scan_ip(ip):
     for base_url in get_base_urls(ip):
         for path in SCAN_PATHS:
             url = f"{base_url}{path}"
-            response, error = safe_request("GET", url)
+            response, error = safe_request("GET", url, timeout=SCAN_TIMEOUT)
             elapsed = int((time.time() - start) * 1000)
             if error:
                 last_reason = error
@@ -757,6 +926,14 @@ def get_mac_address(ip):
     last_reason = "無可用 MAC API 回應"
     candidates = get_auth_candidates(ip)
 
+    if not is_loopback_target(ip):
+        webgui_info = fetch_webgui_config_info(ip)
+        if webgui_info:
+            mac = extract_mac_from_cfg_name(webgui_info["file_name"])
+            if mac:
+                return mac
+            last_reason = f"WebGUI cfg 檔名無法解析 MAC: {webgui_info['file_name']}"
+
     paths = get_paths_for_ip(ip, "mac", MAC_PATHS)
     for path in paths:
         for base_url in get_base_urls(ip):
@@ -766,6 +943,7 @@ def get_mac_address(ip):
                     "GET",
                     url,
                     auth=HTTPBasicAuth(username, password),
+                    timeout=DEVICE_TIMEOUT,
                 )
                 if error:
                     last_reason = f"connection error: {error}"
@@ -802,6 +980,23 @@ def download_config(ip):
     last_reason = "無可用下載 API 回應"
     candidates = get_auth_candidates(ip)
 
+    if not is_loopback_target(ip):
+        webgui_info = fetch_webgui_config_info(ip)
+        if webgui_info:
+            session = webgui_info["session"]
+            download_url = webgui_info["download_url"]
+            try:
+                response = session.get(
+                    download_url,
+                    timeout=DEVICE_TIMEOUT,
+                    verify=verify_tls_value(),
+                )
+                if response.status_code == 200 and len(response.content) > 50:
+                    return response.content
+                last_reason = f"WebGUI download HTTP {response.status_code}"
+            except RequestException as exc:
+                last_reason = f"WebGUI download error: {exc}"
+
     paths = get_paths_for_ip(ip, "export", EXPORT_PATHS)
     for path in paths:
         for base_url in get_base_urls(ip):
@@ -811,6 +1006,7 @@ def download_config(ip):
                     "GET",
                     url,
                     auth=HTTPBasicAuth(username, password),
+                    timeout=DEVICE_TIMEOUT,
                 )
                 if error:
                     last_reason = f"connection error: {error}"
@@ -847,6 +1043,9 @@ def modify_config(raw_bytes):
 
 
 def upload_config(ip, cfg_path):
+    if not is_loopback_target(ip):
+        return upload_config_webgui(ip, cfg_path)
+
     last_reason = "無可用上載 API 回應"
     candidates = get_auth_candidates(ip)
 
@@ -871,6 +1070,7 @@ def upload_config(ip, cfg_path):
                     url,
                     auth=HTTPBasicAuth(username, password),
                     files=files,
+                    timeout=DEVICE_TIMEOUT,
                 )
                 if error:
                     last_reason = f"connection error: {error}"
@@ -899,6 +1099,9 @@ def upload_config(ip, cfg_path):
 
 
 def reboot_phone(ip):
+    if not is_loopback_target(ip):
+        return reboot_phone_webgui(ip)
+
     last_reason = "無可用重啟 API 回應"
     candidates = get_auth_candidates(ip)
     paths = get_paths_for_ip(ip, "reboot", REBOOT_PATHS)
@@ -911,6 +1114,7 @@ def reboot_phone(ip):
                     "POST",
                     url,
                     auth=HTTPBasicAuth(username, password),
+                    timeout=DEVICE_TIMEOUT,
                 )
                 if error:
                     last_reason = f"connection error: {error}"
@@ -1115,7 +1319,7 @@ def run_full_flow_for_targets(target_ips):
 def run_download_only():
     ensure_dir(BACKUP_DIR)
 
-    ips = discover_phones(multithread=True)
+    ips = TARGET_IPS if TARGET_IPS else discover_phones(multithread=True)
 
     success = 0
     fail = 0
@@ -1372,6 +1576,8 @@ def parse_args():
     parser.add_argument("--prefix", help="Network prefix, e.g. 172.16.11.")
     parser.add_argument("--targets", help="Comma-separated IP list to process directly without scanning")
     parser.add_argument("--timeout", type=int, help="Global request timeout in seconds")
+    parser.add_argument("--scan-timeout", type=int, help="Timeout for phone discovery scans")
+    parser.add_argument("--device-timeout", type=int, help="Timeout for MAC/download/upload/reboot requests")
     parser.add_argument("--workers", type=int, help="Set both scan and process worker counts")
     parser.add_argument("--scan-workers", type=int, help="Thread workers for scan")
     parser.add_argument("--process-workers", type=int, help="Thread workers for processing")
@@ -1389,7 +1595,7 @@ def parse_args():
 
 def apply_args(args):
     global NETWORK_PREFIX
-    global SCAN_WORKERS, PROCESS_WORKERS, TIMEOUT
+    global SCAN_WORKERS, PROCESS_WORKERS, TIMEOUT, SCAN_TIMEOUT, DEVICE_TIMEOUT
     global USE_HTTPS, TRY_ALTERNATE_SCHEME
     global VERIFY_TLS, CA_CERT_PATH
     global RETRY_ATTEMPTS, REBOOT_AFTER_UPLOAD
@@ -1404,6 +1610,11 @@ def apply_args(args):
         TARGET_IPS = [item.strip() for item in args.targets.split(",") if item.strip()]
     if args.timeout is not None:
         TIMEOUT = max(1, args.timeout)
+        DEVICE_TIMEOUT = TIMEOUT
+    if args.scan_timeout is not None:
+        SCAN_TIMEOUT = max(1, args.scan_timeout)
+    if args.device_timeout is not None:
+        DEVICE_TIMEOUT = max(1, args.device_timeout)
     if args.workers:
         worker_count = max(1, args.workers)
         SCAN_WORKERS = worker_count

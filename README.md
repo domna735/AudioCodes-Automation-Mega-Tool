@@ -153,6 +153,25 @@ python audiocodes_tool.py --mode acsa_fix
 
 The tool will generate diffs in `diff_reports/` and log results to `tool.log`.
 
+## 📶 Real Phone WebGUI Flow
+
+Real AudioCodes phones use the WebGUI session flow rather than the fake-server AdminPage CGIs.
+
+- Login starts at `login.cgi`
+- The device redirects into `mainform.cgi?go=mainframe.htm`
+- The config download link is discovered from `mainform.cgi?go=manu_config.htm`
+- Upload and reboot reuse the same authenticated WebGUI session
+
+For the production phones `192.168.33.185` and `192.168.33.203`, use download-only testing first:
+
+```powershell
+python audiocodes_tool.py --mode download --targets 192.168.33.185,192.168.33.203 --scan-timeout 1 --device-timeout 10 --no-progress
+```
+
+Do not use these two production phones for modify/upload validation until the backup output has been reviewed.
+
+The same session-based flow is now used for upload and reboot on real phones, but for the two production devices above the recommended validation step is still download-only.
+
 ## 🧪 Local Fake Server Test
 
 For safe local testing, run the mock API server in this repo:

@@ -235,6 +235,8 @@ This allows:
 - Verified the full single-device flow against the fake server on `127.0.0.1` after fixing the patch loader and single-device upload path.
 - Added a multi-device mock-server path with `--targets` so the full flow can be tested against several fake phones without a slow subnet scan.
 - The fake server no longer exposes the entire 127.0.0.0/8 range by default; it now limits itself to configured mock hosts and can generate unique MACs per host.
+- Real AudioCodes phones now use the authenticated WebGUI flow: login at `login.cgi`, discover the manual-config download URL from `mainform.cgi?go=manu_config.htm`, and reuse the same session for download, upload, and reboot.
+- The production phones `192.168.33.185` and `192.168.33.203` should be treated as download-only validation targets until backup review is complete.
 
 **Recommendation:** Use Dry Run first on a representative subnet, review diffs, then run live on the target batches.
 

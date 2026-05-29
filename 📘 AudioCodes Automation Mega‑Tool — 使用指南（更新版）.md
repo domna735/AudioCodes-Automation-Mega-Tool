@@ -249,6 +249,22 @@ python fake_ac_api.py --host-list 127.0.0.1,127.0.0.2,127.0.0.3
 
 而且非 `127.*` 目標會預設用 `80` 埠，不再硬加 `5000`。所以如果你張開嘅真機網址係 `http://192.168.33.203/mainform.cgi?go=mainframe.htm`，掃描就會對得上。
 
+### 真機下載 / 上載流程
+
+真機唔再用假機個套 `AdminPage` CGI 做核心操作。實際流程係：
+
+1. 開 `login.cgi`
+2. 用 WebGUI 表單提交 `admin / 1234`
+3. 跳入 `mainform.cgi?go=mainframe.htm`
+4. 去 `mainform.cgi?go=manu_config.htm` 讀取真正下載連結
+5. 用同一個 session 做 download / upload / reboot
+
+你提供嘅兩部 production phone `192.168.33.185` 同 `192.168.33.203`，現階段建議只做 download 測試，唔好做 modify / upload。建議命令：
+
+```powershell
+python audiocodes_tool.py --mode download --targets 192.168.33.185,192.168.33.203 --scan-timeout 1 --device-timeout 10 --no-progress
+```
+
 ---
 
 ## Reverse Generator（JSON → cfg）

@@ -47,6 +47,29 @@ python audiocodes_tool.py --mode acsa_fix
 
 ---
 
+# 📶 真機 WebGUI Flow（重要）
+
+對於真實 AudioCodes 電話，工具不再依賴假機用的 `/AdminPage/*` CGI。實際流程是：
+
+1. 先打開 `login.cgi`
+2. 用 `admin / 1234` 提交 WebGUI 登入表單
+3. 進入 `mainform.cgi?go=manu_config.htm`
+4. 從頁面裡讀取實際的 `../../configuration/<MAC>.cfg`
+5. 下載 cfg 檔
+6. 若是上載或 reboot，也會沿用同一個 WebGUI session
+
+你現在提供的兩部真機 `192.168.33.185` 和 `192.168.33.203` 建議只做 download 測試，不要先做 modify / upload。原因是這兩部是 production phone，先備份設定即可。
+
+建議先跑：
+
+```powershell
+python audiocodes_tool.py --mode download --targets 192.168.33.185,192.168.33.203 --scan-timeout 1 --device-timeout 10 --no-progress
+```
+
+如果只想備份真機，這個模式最安全；若之後要做 upload/reboot，再另外挑非 production phone 或先用 fake server 驗證。
+
+---
+
 # 🏢 實際分行 cfg 轉 case
 
 如果你要把 `New branch MK real conf/` 內的真實分行設定檔轉成可重用 case，請用：
