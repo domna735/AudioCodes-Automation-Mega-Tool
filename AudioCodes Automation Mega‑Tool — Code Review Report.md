@@ -231,6 +231,8 @@ This allows:
 - On Windows, quote any `--acsa-case` path that contains spaces.
 - Real branch cfg exports from `New branch MK real conf/` can now be converted into reusable baseline and patch cases with `branch_case_generator.py` and `branch_plan_mk.json`.
 - Case JSON files can now be rendered back into uploadable cfg files with the new `--mode reverse` workflow.
+- CLI polish added: built-in `--help`, `--version` (`AudioCodes Mega-Tool v1.0`), `--timeout <sec>`, and `--workers <count>` for tuning request timeout and thread counts without touching the architecture.
+- Verified the full single-device flow against the fake server on `127.0.0.1` after fixing the patch loader and single-device upload path.
 
 **Recommendation:** Use Dry Run first on a representative subnet, review diffs, then run live on the target batches.
 

@@ -34,6 +34,7 @@ ACSA_CASE_ID = None
 REVERSE_CASE_FILE = None
 REVERSE_CASE_DIR = None
 REVERSE_OUTPUT_DIR = "generated_cfg/reversed_cfg"
+TOOL_VERSION = "AudioCodes Mega-Tool v1.0"
 
 LOG_FILE = "tool.log"
 PATCH_FILE = "patch.json"
@@ -298,6 +299,23 @@ def get_auth_candidates(ip):
 
 def load_patch_rules():
     if not os.path.exists(PATCH_FILE):
+        return DEFAULT_PATCH_RULES
+
+    try:
+        with open(PATCH_FILE, "r", encoding="utf-8") as patch_file:
+            data = json.load(patch_file)
+
+        replace_rules = data.get("replace")
+        set_rules = data.get("set")
+
+        if not isinstance(replace_rules, list):
+            replace_rules = []
+        if not isinstance(set_rules, dict):
+            set_rules = {}
+
+        return {"replace": replace_rules, "set": set_rules}
+    except Exception as exc:
+        record_error("N/A", "patch-load", f"讀取 {PATCH_FILE} 失敗，改用預設 patch: {exc}")
         return DEFAULT_PATCH_RULES
 
 
@@ -1074,13 +1092,29 @@ def process_single_device(ip, args):
         return
 
     modified_cfg = modify_config(cfg)
+    modified_text = modified_cfg.decode("utf-8", errors="ignore")
+    valid, validation_errors = validate_config_text(modified_text)
+    if not valid:
+        record_error(ip, "config-validation", "; ".join(validation_errors[:5]))
+        LOGGER.error(f"[{ip}] 修改後設定驗證失敗")
+        return
+
+    ensure_dir(MODIFIED_DIR)
+    modified_path = os.path.join(MODIFIED_DIR, f"{mac}.cfg")
+    try:
+        with open(modified_path, "wb") as modified_file:
+            modified_file.write(modified_cfg)
+    except Exception as exc:
+        record_error(ip, "modified-write", f"寫入修改檔失敗: {exc}")
+        LOGGER.error(f"[{ip}] 寫入修改檔失敗: {exc}")
+        return
 
     if args.dry_run:
         LOGGER.info(f"[{ip}] Dry Run 模式，不上載設定")
-        write_diff_report(mac, cfg.decode("utf-8", errors="ignore"), modified_cfg.decode("utf-8", errors="ignore"))
+        write_diff_report(mac, cfg.decode("utf-8", errors="ignore"), modified_text)
         return
 
-    upload_ok = upload_config(ip, modified_cfg)
+    upload_ok = upload_config(ip, modified_path)
     if not upload_ok:
         LOGGER.error(f"[{ip}] 上載失敗")
         return
@@ -1219,12 +1253,15 @@ def run_acsa_fix():
 
 def parse_args():
     parser = ArgumentParser(description="AudioCodes Automation Mega-Tool")
+    parser.add_argument("--version", action="version", version=TOOL_VERSION)
     parser.add_argument("--mode", choices=["full", "dry", "gen", "download", "acsa_fix", "reverse", "menu"], default="menu")
     parser.add_argument("--acsa-case", help="ACSA case id to apply (e.g. 5 or 43)")
     parser.add_argument("--case-file", help="Single case JSON to convert back into cfg")
     parser.add_argument("--case-dir", help="Directory of case JSON files to convert back into cfg")
     parser.add_argument("--output-dir", help="Output directory for generated cfg files")
     parser.add_argument("--prefix", help="Network prefix, e.g. 172.16.11.")
+    parser.add_argument("--timeout", type=int, help="Global request timeout in seconds")
+    parser.add_argument("--workers", type=int, help="Set both scan and process worker counts")
     parser.add_argument("--scan-workers", type=int, help="Thread workers for scan")
     parser.add_argument("--process-workers", type=int, help="Thread workers for processing")
     parser.add_argument("--https", action="store_true", help="Prefer HTTPS")
@@ -1241,7 +1278,7 @@ def parse_args():
 
 def apply_args(args):
     global NETWORK_PREFIX
-    global SCAN_WORKERS, PROCESS_WORKERS
+    global SCAN_WORKERS, PROCESS_WORKERS, TIMEOUT
     global USE_HTTPS, TRY_ALTERNATE_SCHEME
     global VERIFY_TLS, CA_CERT_PATH
     global RETRY_ATTEMPTS, REBOOT_AFTER_UPLOAD
@@ -1251,6 +1288,12 @@ def apply_args(args):
 
     if args.prefix:
         NETWORK_PREFIX = args.prefix
+    if args.timeout is not None:
+        TIMEOUT = max(1, args.timeout)
+    if args.workers:
+        worker_count = max(1, args.workers)
+        SCAN_WORKERS = worker_count
+        PROCESS_WORKERS = worker_count
     if args.scan_workers:
         SCAN_WORKERS = max(1, args.scan_workers)
     if args.process_workers:
@@ -1272,13 +1315,6 @@ def apply_args(args):
         DRY_RUN = True
     if args.no_progress:
         ENABLE_PROGRESS = False
-    if args.ip:
-        target_ip = args.ip
-        LOGGER.info(f"使用單一 IP 模式：{target_ip}")
-
-        # 直接處理單一 IP，不掃描
-        process_single_device(target_ip, args)
-        return
     if getattr(args, 'acsa_case', None):
         try:
             # accept numeric or string ids
@@ -1306,6 +1342,11 @@ def main():
 
     setup_logging()
     IP_CREDENTIALS, GLOBAL_CREDENTIALS = load_credentials()
+
+    if args.ip:
+        LOGGER.info(f"使用單一 IP 模式：{args.ip}")
+        process_single_device(args.ip, args)
+        return
 
     LOGGER.info("工具啟動，HTTPS=%s, TLS_VERIFY=%s", USE_HTTPS, VERIFY_TLS)
 
